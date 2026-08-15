@@ -1,0 +1,16 @@
+# Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# Local data & audio caches
+*.mp3
+*.wav
+*.flac
+*.sqlite
+*.db
+data/
+
+# OS files
+.DS_Store
+Thumbs.db
