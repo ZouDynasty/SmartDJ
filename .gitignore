@@ -1,17 +1,70 @@
 # Python environment
 .venv/
+venv/
+env/
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.python-version
 
-# Local data & audio caches
-*.mp3
-*.wav
-*.flac
-*.sqlite
-*.db
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Library database, backups and generated analysis artifacts.
+# `data/` holds library.sqlite plus the energy calibration and genre logs,
+# all rebuilt by the ingest and analysis scripts.
 data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.bak
+*.bak-*
+
+# Essentia/TensorFlow models, downloaded on demand by detect_missing.py
 models/
+
+# Rekordbox exports: these embed the full local library with absolute paths,
+# and nothing in this repo is built from a checked-in XML.
+*.xml
+
+# Audio files — the library lives outside the repo
+*.mp3
+*.m4a
+*.mp4
+*.wav
+*.aif
+*.aiff
+*.flac
+*.ogg
+*.opus
+*.aac
+
+# Node (frontend has its own .gitignore; this is a backstop)
+node_modules/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Editors
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
 
 # OS files
 .DS_Store
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db

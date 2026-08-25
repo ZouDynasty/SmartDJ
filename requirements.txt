@@ -2,15 +2,14 @@
 tinytag>=1.10.0
 mutagen>=1.47.0
 
-# Audio DSP, Beat Tracking, Chromagram, and Energy Analysis
-librosa>=0.10.0
-soundfile>=0.12.0
+# Audio analysis (BPM, key, energy, Discogs-EffNet genre)
 numpy>=1.24.0
-scipy>=1.10.0
-
-# Genre classification (Discogs-EffNet). Pin a build with Python 3.12 wheels.
 essentia-tensorflow==2.1b6.dev1389
 certifi>=2024.0.0
 
 # Terminal UI & Formatting
 rich>=13.7.0
+
+# Local API serving the library + audio to the frontend
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Scan a music library, extract existing audio tags, and store them in SQLite.
+"""Scan a music library or open the SmartDJ SQLite schema.
+
+Primary ingest is Rekordbox XML via ``ingest_rekordbox.py``. This module still
+extracts existing audio tags, owns the ``tracks`` schema, and remains the
+folder-scan fallback.
 
 Supported formats: mp3, mp4, m4a, wav, aiff/aif, flac.
 """
@@ -26,6 +30,10 @@ BPM_TAG_NAMES = ("tbpm", "bpm", "tmpo")
 KEY_TAG_NAMES = ("tkey", "initialkey", "initial_key", "key")
 GENRE_TAG_NAMES = ("genre", "tcon", "\xa9gen")
 
+MIN_BPM = 40.0
+MAX_BPM = 260.0
+CAMELOT_PATTERN = re.compile(r"^(?:[1-9]|1[0-2])[AB]$", re.IGNORECASE)
+
 TRACK_COLUMNS = (
     "id",
     "file_path",
@@ -37,6 +45,128 @@ TRACK_COLUMNS = (
     "camelot_key",
     "energy_score",
     "genre",
+)
+
+# Rekordbox XML fields plus scalar energy. ``id`` stays the internal PK used by
+# labeling FKs; ``track_id`` is the Rekordbox TrackID upsert key.
+TRACKS_TABLE_COLUMNS = (
+    "id",
+    "track_id",
+    "file_path",
+    "title",
+    "artist",
+    "composer",
+    "album",
+    "grouping",
+    "genre",
+    "kind",
+    "size",
+    "duration",
+    "disc_number",
+    "track_number",
+    "year",
+    "bpm",
+    "date_added",
+    "bitrate",
+    "sample_rate",
+    "comments",
+    "play_count",
+    "rating",
+    "remixer",
+    "key",
+    "camelot_key",
+    "label",
+    "mix",
+    "colour",
+    "date_modified",
+    "tempo_markers_json",
+    "position_markers_json",
+    "rekordbox_attrs_json",
+    "energy_score",
+    "energy_loudness_db",
+    "energy_centroid_hz",
+    "energy_hf_ratio",
+    "energy_flux",
+    "energy_onset_rate",
+    "clean_genre",
+    "macro_genre",
+)
+
+TRACKS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id INTEGER UNIQUE,
+    file_path TEXT,
+    title TEXT,
+    artist TEXT,
+    composer TEXT,
+    album TEXT,
+    grouping TEXT,
+    genre TEXT,
+    kind TEXT,
+    size INTEGER,
+    duration REAL,
+    disc_number INTEGER,
+    track_number INTEGER,
+    year INTEGER,
+    bpm REAL,
+    date_added TEXT,
+    bitrate INTEGER,
+    sample_rate INTEGER,
+    comments TEXT,
+    play_count INTEGER,
+    rating INTEGER,
+    remixer TEXT,
+    "key" TEXT,
+    camelot_key TEXT,
+    label TEXT,
+    mix TEXT,
+    colour TEXT,
+    date_modified TEXT,
+    tempo_markers_json TEXT,
+    position_markers_json TEXT,
+    rekordbox_attrs_json TEXT,
+    energy_score REAL,
+    energy_loudness_db REAL,
+    energy_centroid_hz REAL,
+    energy_hf_ratio REAL,
+    energy_flux REAL,
+    energy_onset_rate REAL,
+    clean_genre TEXT,
+    macro_genre TEXT
+)
+"""
+
+REKORDBOX_ALTER_COLUMNS = (
+    ("track_id", "INTEGER"),
+    ("composer", "TEXT"),
+    ("album", "TEXT"),
+    ("grouping", "TEXT"),
+    ("kind", "TEXT"),
+    ("size", "INTEGER"),
+    ("disc_number", "INTEGER"),
+    ("track_number", "INTEGER"),
+    ("year", "INTEGER"),
+    ("date_added", "TEXT"),
+    ("bitrate", "INTEGER"),
+    ("sample_rate", "INTEGER"),
+    ("comments", "TEXT"),
+    ("play_count", "INTEGER"),
+    ("rating", "INTEGER"),
+    ("remixer", "TEXT"),
+    ("label", "TEXT"),
+    ("mix", "TEXT"),
+    ("colour", "TEXT"),
+    ("date_modified", "TEXT"),
+    ("tempo_markers_json", "TEXT"),
+    ("position_markers_json", "TEXT"),
+    ("rekordbox_attrs_json", "TEXT"),
+    # Raw perceptual-energy features; see audio_extraction/energy.py.
+    ("energy_loudness_db", "REAL"),
+    ("energy_centroid_hz", "REAL"),
+    ("energy_hf_ratio", "REAL"),
+    ("energy_flux", "REAL"),
+    ("energy_onset_rate", "REAL"),
 )
 
 # Canonical musical key -> Camelot code.
@@ -124,16 +254,38 @@ def _other_field(tag: TinyTag, name: str) -> str | None:
 
 
 def parse_bpm(value: object) -> float | None:
+    """Parse a BPM tag and accept it only if it is in ``[MIN_BPM, MAX_BPM]``."""
     if value is None:
         return None
     if isinstance(value, (int, float)):
         bpm = float(value)
-        return bpm if bpm > 0 else None
+        return bpm if MIN_BPM <= bpm <= MAX_BPM else None
     match = re.search(r"(\d+(?:\.\d+)?)", str(value))
     if not match:
         return None
     bpm = float(match.group(1))
-    return bpm if bpm > 0 else None
+    return bpm if MIN_BPM <= bpm <= MAX_BPM else None
+
+
+def camelot_from_key(note: str | None, scale: str | None) -> str | None:
+    """Map a musical note + scale (Essentia or ID3) to Camelot ``1A``–``12B``."""
+    if not note or not scale:
+        return None
+    canonical = _canonical_note(str(note))
+    mode_raw = str(scale).strip().lower()
+    if mode_raw in {"maj", "major"}:
+        mode = "major"
+    elif mode_raw in {"min", "minor", "m"}:
+        mode = "minor"
+    else:
+        return None
+    return CAMELOT_FROM_KEY.get((canonical, mode))
+
+
+def is_valid_camelot(value: object) -> bool:
+    if value is None:
+        return False
+    return bool(CAMELOT_PATTERN.fullmatch(str(value).strip().upper().replace(" ", "")))
 
 
 def _canonical_note(note: str) -> str:
@@ -171,7 +323,7 @@ def parse_key_fields(raw: str | None) -> tuple[str | None, str | None]:
     mode = "minor" if mode_raw.startswith("m") and not mode_raw.startswith("maj") else "major"
     display_note = note[0].upper() + note[1:]
     musical = f"{display_note} {mode}"
-    camelot = CAMELOT_FROM_KEY.get((note, mode))
+    camelot = camelot_from_key(note, mode)
     return musical, camelot
 
 
@@ -250,6 +402,20 @@ def extract_tags(path: Path) -> TrackInfo:
     return info
 
 
+def _unique_index_on(connection: sqlite3.Connection, table: str, column: str) -> bool:
+    for index in connection.execute(f"PRAGMA index_list({table})"):
+        if not index[2]:
+            continue
+        index_name = index[1]
+        cols = [
+            info[2]
+            for info in connection.execute(f"PRAGMA index_info({index_name})")
+        ]
+        if cols == [column]:
+            return True
+    return False
+
+
 def connect_db(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(db_path)
@@ -258,29 +424,23 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
     existing = {
         row[1] for row in connection.execute("PRAGMA table_info(tracks)").fetchall()
     }
-    if existing and not set(TRACK_COLUMNS).issubset(existing):
+    needs_rebuild = bool(existing) and (
+        not set(TRACK_COLUMNS).issubset(existing)
+        or "track_id" not in existing
+        or _unique_index_on(connection, "tracks", "file_path")
+    )
+    if needs_rebuild:
         _rebuild_tracks_table(connection, existing)
 
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS tracks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_path TEXT NOT NULL UNIQUE,
-            title TEXT,
-            artist TEXT,
-            duration REAL,
-            bpm REAL,
-            "key" TEXT,
-            camelot_key TEXT,
-            energy_score REAL,
-            genre TEXT,
-            clean_genre TEXT,
-            macro_genre TEXT
-        )
-        """
-    )
+    connection.execute(TRACKS_TABLE_SQL)
     _ensure_column(connection, "tracks", "clean_genre", "TEXT")
     _ensure_column(connection, "tracks", "macro_genre", "TEXT")
+    for column, definition in REKORDBOX_ALTER_COLUMNS:
+        _ensure_column(connection, "tracks", column, definition)
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_track_id ON tracks(track_id)"
+    )
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_tracks_file_path ON tracks(file_path)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_tracks_bpm ON tracks(bpm)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_tracks_camelot ON tracks(camelot_key)")
@@ -291,6 +451,7 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
     connection.execute(
         "CREATE INDEX IF NOT EXISTS idx_tracks_macro_genre ON tracks(macro_genre)"
     )
+    ensure_playlist_schema(connection)
     try:
         from normalize_genres import ensure_genre_schema
     except ImportError:
@@ -298,7 +459,58 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
         from normalize_genres import ensure_genre_schema
 
     ensure_genre_schema(connection)
+    ensure_transition_label_schema(connection)
     return connection
+
+
+def ensure_transition_label_schema(connection: sqlite3.Connection) -> None:
+    """Create the mix-label table used by the ranking labeler."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS transition_labels (
+            seed_track_id INTEGER NOT NULL,
+            candidate_track_id INTEGER NOT NULL,
+            relevance INTEGER NOT NULL CHECK (relevance BETWEEN 0 AND 3),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (seed_track_id, candidate_track_id),
+            FOREIGN KEY (seed_track_id) REFERENCES tracks(id),
+            FOREIGN KEY (candidate_track_id) REFERENCES tracks(id)
+        )
+        """
+    )
+    connection.commit()
+
+
+def ensure_playlist_schema(connection: sqlite3.Connection) -> None:
+    """Folders, playlists, and ordered Rekordbox track keys."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS playlists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            parent_id INTEGER,
+            name TEXT NOT NULL,
+            node_type TEXT NOT NULL CHECK (node_type IN ('folder', 'playlist')),
+            path TEXT NOT NULL UNIQUE,
+            FOREIGN KEY (parent_id) REFERENCES playlists(id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS playlist_tracks (
+            playlist_id INTEGER NOT NULL,
+            track_id INTEGER NOT NULL,
+            position INTEGER NOT NULL,
+            PRIMARY KEY (playlist_id, position),
+            FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+            FOREIGN KEY (track_id) REFERENCES tracks(track_id)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playlist_tracks_track ON playlist_tracks(track_id)"
+    )
+    connection.commit()
 
 
 def _ensure_column(
@@ -313,69 +525,68 @@ def _ensure_column(
 
 def _rebuild_tracks_table(connection: sqlite3.Connection, existing: set[str]) -> None:
     """Recreate tracks with the current schema, copying any overlapping columns."""
-    copy_columns = [column for column in TRACK_COLUMNS if column != "id" and column in existing]
-    for column in ("clean_genre", "macro_genre"):
-        if column in existing and column not in copy_columns:
-            copy_columns.append(column)
+    copy_columns = [column for column in TRACKS_TABLE_COLUMNS if column in existing]
     quoted = ", ".join(sql_ident(column) for column in copy_columns)
+    connection.execute("PRAGMA foreign_keys = OFF")
     connection.execute("ALTER TABLE tracks RENAME TO tracks_legacy")
-    connection.execute(
-        """
-        CREATE TABLE tracks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_path TEXT NOT NULL UNIQUE,
-            title TEXT,
-            artist TEXT,
-            duration REAL,
-            bpm REAL,
-            "key" TEXT,
-            camelot_key TEXT,
-            energy_score REAL,
-            genre TEXT,
-            clean_genre TEXT,
-            macro_genre TEXT
-        )
-        """
-    )
+    connection.execute(TRACKS_TABLE_SQL.replace("CREATE TABLE IF NOT EXISTS", "CREATE TABLE", 1))
     if quoted:
         connection.execute(
             f"INSERT INTO tracks ({quoted}) SELECT {quoted} FROM tracks_legacy ORDER BY rowid"
         )
     connection.execute("DROP TABLE tracks_legacy")
+    max_id = connection.execute("SELECT MAX(id) FROM tracks").fetchone()[0]
+    if max_id is not None:
+        try:
+            connection.execute("DELETE FROM sqlite_sequence WHERE name = 'tracks'")
+            connection.execute(
+                "INSERT INTO sqlite_sequence(name, seq) VALUES ('tracks', ?)",
+                (int(max_id),),
+            )
+        except sqlite3.Error:
+            pass
+    connection.execute("PRAGMA foreign_keys = ON")
     connection.commit()
 
 
 def save_tracks(connection: sqlite3.Connection, tracks: list[TrackInfo]) -> None:
-    connection.executemany(
-        """
+    insert_sql = """
         INSERT INTO tracks (
             file_path, title, artist, duration, bpm, "key", camelot_key, genre
         ) VALUES (
             :file_path, :title, :artist, :duration, :bpm, :key, :camelot_key, :genre
         )
-        ON CONFLICT(file_path) DO UPDATE SET
-            title = excluded.title,
-            artist = excluded.artist,
-            duration = excluded.duration,
-            bpm = excluded.bpm,
-            "key" = excluded."key",
-            camelot_key = excluded.camelot_key,
-            genre = COALESCE(excluded.genre, tracks.genre)
-        """,
-        [
-            {
-                "file_path": track.file_path,
-                "title": track.title,
-                "artist": track.artist,
-                "duration": track.duration,
-                "bpm": track.bpm,
-                "key": track.key,
-                "camelot_key": track.camelot_key,
-                "genre": track.genre,
-            }
-            for track in tracks
-        ],
-    )
+    """
+    update_sql = """
+        UPDATE tracks SET
+            title = :title,
+            artist = :artist,
+            duration = :duration,
+            bpm = :bpm,
+            "key" = :key,
+            camelot_key = :camelot_key,
+            genre = COALESCE(:genre, genre)
+        WHERE file_path = :file_path
+    """
+    for track in tracks:
+        payload = {
+            "file_path": track.file_path,
+            "title": track.title,
+            "artist": track.artist,
+            "duration": track.duration,
+            "bpm": track.bpm,
+            "key": track.key,
+            "camelot_key": track.camelot_key,
+            "genre": track.genre,
+        }
+        exists = connection.execute(
+            "SELECT 1 FROM tracks WHERE file_path = ?",
+            (track.file_path,),
+        ).fetchone()
+        if exists:
+            connection.execute(update_sql, payload)
+        else:
+            connection.execute(insert_sql, payload)
     connection.commit()
 
 
