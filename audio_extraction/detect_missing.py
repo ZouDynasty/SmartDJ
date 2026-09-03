@@ -145,9 +145,9 @@ def extract_key(audio) -> tuple[str | None, str | None]:
 def extract_energy_score(audio, sample_rate: int = ANALYSIS_SAMPLE_RATE) -> float | None:
     """Score perceived energy on 0–10 against the library's own distribution.
 
-    Energy is relative, so a single track is ranked against the quantiles that
-    ``recompute_energy.py`` wrote. Returns ``None`` when no calibration exists
-    yet; run ``recompute_energy.py --only-missing`` to fill those tracks in.
+    Features come from the loudest 45 s of the file (see ``energy.py``). The
+    score is interpolated against the quantiles that ``recompute_energy.py``
+    wrote. Returns ``None`` when no calibration exists yet.
     """
     features = extract_energy_features(audio, sample_rate)
     if features is None:

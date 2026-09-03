@@ -40,35 +40,35 @@ function App() {
   }, [setCatalog, setCatalogError, setCatalogStatus])
 
   return (
-    <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-slate-950 text-slate-100">
-      <header className="flex shrink-0 items-center gap-3 border-b border-slate-800 px-4 py-2.5">
-        <Headphones className="size-4 text-cyan-400" />
-        <h1 className="text-sm font-semibold tracking-tight text-slate-100">
+    <div className="flex h-svh min-h-0 flex-col gap-px overflow-hidden bg-seam font-sans text-ink">
+      <header className="flex shrink-0 items-center gap-3 bg-theme px-4 py-2.5">
+        <Headphones className="size-4 text-accent" />
+        <h1 className="text-sm font-semibold tracking-tight text-ink">
           SmartDJ
-          <span className="ml-2 font-normal text-slate-500">Set Builder</span>
+          <span className="ml-2 font-normal text-ink-muted">Set Builder</span>
         </h1>
-        <span className="rounded-full border border-slate-800 bg-slate-900 px-2.5 py-0.5 font-mono text-xs text-slate-400">
+        <span className="rounded-full border border-theme-line bg-theme-raised px-2.5 py-0.5 font-mono text-xs text-ink-muted">
           {activeQueue.length} in set ·{' '}
           {formatDuration(totalSetDuration(activeQueue))}
         </span>
-        <span className="font-mono text-xs text-slate-500">
+        <span className="font-mono text-xs text-ink-muted">
           {catalogStatus === 'ready'
             ? `${catalog.length} tracks in library`
             : 'connecting to library…'}
         </span>
         {catalogStatus === 'error' && (
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-rose-400">
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-rose-500">
             <TriangleAlert className="size-3.5" />
             {catalogError} — start the API with{' '}
-            <code className="text-rose-300">
+            <code className="text-rose-600">
               python -m uvicorn api.main:app --port 8000
             </code>
           </span>
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 gap-px">
+        <div className="flex min-w-0 flex-1 flex-col gap-px">
           <SetGraph />
           <NowNext />
           <TrackLibrary />

@@ -2,6 +2,27 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Tight grey ramp for surfaces, plus a dusty light red used as the
+ * chrome / set / playback hue so those regions read apart from the catalog.
+ */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-canvas: #b6b6bd;
+  --color-panel: #bebec5;
+  --color-raised: #c6c6cd;
+  --color-line: #aaaab1;
+  --color-seam: #7a7a82;
+  --color-ink: #3f3f46;
+  --color-ink-muted: #52525b;
+  --color-ink-faint: #63636c;
+  --color-theme: #e8c4c4;
+  --color-theme-raised: #f0d4d4;
+  --color-theme-line: #d4a3a3;
+  --color-accent: #d45c5c;
+  --color-accent-hover: #c44d4d;
+}
+
 html,
 body,
 #root {
@@ -10,7 +31,9 @@ body,
 
 body {
   margin: 0;
-  @apply bg-slate-950 text-slate-100 antialiased;
+  /* Keeps native controls (scrollbars, range thumbs, selects) on the light set. */
+  color-scheme: light;
+  @apply bg-canvas font-sans text-ink antialiased;
 }
 
 #root {

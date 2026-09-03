@@ -33,6 +33,11 @@ export function trackAudioUrl(trackId: number): string {
   return `${API_BASE}/tracks/${trackId}/audio`
 }
 
+/** Album cover embedded in the track's file. 404s when there is none. */
+export function trackArtworkUrl(trackId: number): string {
+  return `${API_BASE}/tracks/${trackId}/artwork`
+}
+
 export function getPlaylists(signal?: AbortSignal): Promise<Playlist[]> {
   return apiFetch<Playlist[]>('/playlists', { signal })
 }

@@ -86,8 +86,10 @@ TRACKS_TABLE_COLUMNS = (
     "energy_loudness_db",
     "energy_centroid_hz",
     "energy_hf_ratio",
+    "energy_lf_ratio",
     "energy_flux",
     "energy_onset_rate",
+    "energy_onsets_per_beat",
     "clean_genre",
     "macro_genre",
 )
@@ -130,8 +132,10 @@ CREATE TABLE IF NOT EXISTS tracks (
     energy_loudness_db REAL,
     energy_centroid_hz REAL,
     energy_hf_ratio REAL,
+    energy_lf_ratio REAL,
     energy_flux REAL,
     energy_onset_rate REAL,
+    energy_onsets_per_beat REAL,
     clean_genre TEXT,
     macro_genre TEXT
 )
@@ -165,8 +169,10 @@ REKORDBOX_ALTER_COLUMNS = (
     ("energy_loudness_db", "REAL"),
     ("energy_centroid_hz", "REAL"),
     ("energy_hf_ratio", "REAL"),
+    ("energy_lf_ratio", "REAL"),
     ("energy_flux", "REAL"),
     ("energy_onset_rate", "REAL"),
+    ("energy_onsets_per_beat", "REAL"),
 )
 
 # Canonical musical key -> Camelot code.

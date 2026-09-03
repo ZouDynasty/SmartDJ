@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Recompute ``energy_score`` for the library from spectral features.
+"""Recompute ``energy_score`` from 45-second peak-window features.
 
 Two passes:
 
-1. Decode every track once and store its raw energy features. This is the
-   expensive pass, so it runs across worker processes.
-2. Rank those features within the library, combine them, and rank again to
-   produce ``energy_score`` on 0-10. This pass is pure arithmetic over the
-   database, so weights in ``energy.py`` can be retuned and only pass 2 rerun
-   (``--rescore-only``).
+1. Decode every track, locate the loudest 45 s window, and store the six raw
+   features. This is the expensive pass and runs in a process pool.
+2. Rank those features within the library, mix them, and rank again to produce
+   ``energy_score`` on 0–10. Weights in ``energy.py`` can be retuned and only
+   this pass rerun (``--rescore-only``).
 
 Usage::
 
@@ -28,16 +27,8 @@ from typing import Any
 
 import numpy as np
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 from rich.table import Table
+from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -107,38 +98,32 @@ def extract_pass(
         connection.commit()
         pending.clear()
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Analyzing energy", total=len(jobs))
+    def consume(result: tuple[int, dict[str, float] | None, str | None]) -> None:
+        nonlocal ok
+        track_id, features, error = result
+        if features is None:
+            failures.append((track_id, error or "unknown"))
+        else:
+            pending.append({"id": track_id, **features})
+            ok += 1
+            if len(pending) >= WRITE_BATCH:
+                flush()
 
-        def consume(result: tuple[int, dict[str, float] | None, str | None]) -> None:
-            track_id, features, error = result
-            if features is None:
-                failures.append((track_id, error or "unknown"))
-            else:
-                pending.append({"id": track_id, **features})
-                nonlocal ok
-                ok += 1
-                if len(pending) >= WRITE_BATCH:
-                    flush()
-            progress.advance(task)
-
+    progress = tqdm(total=len(jobs), desc="Analyzing energy", unit="track")
+    try:
         if workers <= 1:
             for job in jobs:
                 consume(analyze_one(job))
+                progress.update(1)
         else:
             with ProcessPoolExecutor(max_workers=workers) as pool:
                 futures = [pool.submit(analyze_one, job) for job in jobs]
                 for future in as_completed(futures):
                     consume(future.result())
+                    progress.update(1)
         flush()
+    finally:
+        progress.close()
 
     if failures:
         console.print(f"[yellow]{len(failures)} track(s) could not be analyzed[/yellow]")
@@ -170,11 +155,14 @@ def rescore_pass(
     }
 
     scores, _composite, calibration = scores_from_features(features)
-    connection.executemany(
-        "UPDATE tracks SET energy_score = ? WHERE id = ?",
-        [(float(score), int(track_id)) for score, track_id in zip(scores, ids)],
-    )
-    connection.commit()
+    payload = [
+        (float(score), int(track_id)) for score, track_id in zip(scores, ids)
+    ]
+    with connection:
+        connection.executemany(
+            "UPDATE tracks SET energy_score = ? WHERE id = ?",
+            payload,
+        )
 
     save_calibration(calibration, calibration_path)
     console.print(f"Calibration written to [cyan]{calibration_path}[/cyan]")

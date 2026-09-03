@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { ArrowRight, Music4, Pause, Play, Radio } from 'lucide-react'
+import { Artwork } from '@/components/Artwork'
 import { cn } from '@/lib/utils'
 import {
   camelotRelation,
@@ -49,12 +50,12 @@ function toSlot(
 
 function keyBadgeClass(keyLabel: string | null): string {
   if (keyLabel?.endsWith('A')) {
-    return 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300'
+    return 'border-sky-200 bg-sky-50 text-sky-700'
   }
   if (keyLabel?.endsWith('B')) {
-    return 'border-amber-400/40 bg-amber-400/10 text-amber-300'
+    return 'border-amber-200 bg-amber-50 text-amber-700'
   }
-  return 'border-slate-700 bg-slate-800 text-slate-400'
+  return 'border-line bg-raised text-ink-muted'
 }
 
 interface SlotCardProps {
@@ -67,18 +68,18 @@ interface SlotCardProps {
 
 function SlotCard({ slot, role, isPlaying, onPlay, onHover }: SlotCardProps) {
   const isCurrent = role === 'current'
-  const accent = isCurrent ? 'text-cyan-400' : 'text-slate-500'
+  const accent = isCurrent ? 'text-accent' : 'text-ink-muted'
   const Icon = isCurrent ? Radio : Music4
 
   if (!slot) {
     return (
-      <div className="flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-dashed border-slate-800 px-3 py-2.5">
+      <div className="flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-dashed border-line bg-panel px-3 py-2.5">
         <Icon className={cn('size-4 shrink-0', accent)} />
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+          <p className="text-xs font-medium uppercase tracking-wider text-ink-muted">
             {isCurrent ? 'Now playing' : 'Up next'}
           </p>
-          <p className="truncate text-sm text-slate-600">
+          <p className="truncate text-sm text-ink-muted">
             {isCurrent ? 'Nothing loaded' : 'Set has no next track'}
           </p>
         </div>
@@ -93,26 +94,36 @@ function SlotCard({ slot, role, isPlaying, onPlay, onHover }: SlotCardProps) {
       className={cn(
         'flex min-w-0 flex-1 items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors',
         isCurrent
-          ? 'border-cyan-400/50 bg-cyan-400/5'
-          : 'border-slate-800 bg-slate-900/60 hover:border-slate-700',
+          ? 'border-theme-line bg-theme'
+          : 'border-line bg-panel hover:bg-raised',
       )}
     >
       <button
         type="button"
         aria-label={isPlaying ? `Pause ${slot.title}` : `Play ${slot.title}`}
         onClick={() => onPlay(slot.track)}
-        className={cn(
-          'flex size-8 shrink-0 items-center justify-center rounded-full transition-colors',
-          isPlaying
-            ? 'bg-cyan-400 text-slate-950 hover:bg-cyan-300'
-            : 'border border-slate-700 text-slate-400 hover:border-cyan-400/60 hover:text-cyan-300',
-        )}
+        className="group relative shrink-0"
       >
-        {isPlaying ? (
-          <Pause className="size-3.5 fill-current" />
-        ) : (
-          <Play className="size-3.5 fill-current" />
-        )}
+        <Artwork
+          trackId={slot.track.track_id}
+          title={slot.title}
+          className="size-12"
+        />
+        <span
+          className={cn(
+            // Scrim stays dark: it sits over album art, not over the theme.
+            'absolute inset-0 flex items-center justify-center rounded-md transition-opacity',
+            isPlaying
+              ? 'bg-slate-900/45 opacity-100'
+              : 'bg-slate-900/50 opacity-0 group-hover:opacity-100',
+          )}
+        >
+          {isPlaying ? (
+            <Pause className="size-5 fill-current text-theme-raised" />
+          ) : (
+            <Play className="size-5 fill-current text-white" />
+          )}
+        </span>
       </button>
 
       <div className="min-w-0 flex-1">
@@ -120,19 +131,19 @@ function SlotCard({ slot, role, isPlaying, onPlay, onHover }: SlotCardProps) {
           <Icon className={cn('size-3', accent)} />
           <span className={accent}>{isCurrent ? 'Now playing' : 'Up next'}</span>
           {slot.position !== null && (
-            <span className="font-mono text-slate-600">
+            <span className="font-mono text-ink-faint">
               #{String(slot.position).padStart(2, '0')}
             </span>
           )}
         </p>
-        <p className="truncate text-sm font-semibold text-slate-100">
+        <p className="truncate text-sm font-semibold text-ink">
           {slot.title}
         </p>
-        <p className="truncate text-xs text-slate-400">{slot.artist}</p>
+        <p className="truncate text-xs text-ink-muted">{slot.artist}</p>
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 font-mono text-xs">
-        <span className="rounded border border-cyan-400/40 bg-cyan-400/10 px-1.5 py-0.5 text-cyan-300">
+        <span className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-sky-700">
           {slot.bpm === null ? '—' : slot.bpm.toFixed(1)}
         </span>
         <span
@@ -143,10 +154,10 @@ function SlotCard({ slot, role, isPlaying, onPlay, onHover }: SlotCardProps) {
         >
           {slot.keyLabel ?? '—'}
         </span>
-        <span className="rounded border border-fuchsia-400/40 bg-fuchsia-400/10 px-1.5 py-0.5 text-fuchsia-300">
+        <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-violet-700">
           {slot.energy === null ? '—' : slot.energy.toFixed(2)}
         </span>
-        <span className="text-slate-500">
+        <span className="text-ink-faint">
           {formatDuration(slot.durationSec)}
         </span>
       </div>
@@ -164,7 +175,7 @@ function TransitionSummary({
 }) {
   if (!current || !next) {
     return (
-      <div className="flex shrink-0 items-center px-2 text-slate-700">
+      <div className="flex shrink-0 items-center px-2 text-ink-faint">
         <ArrowRight className="size-4" />
       </div>
     )
@@ -185,27 +196,27 @@ function TransitionSummary({
 
   return (
     <div className="flex shrink-0 flex-col items-center gap-1 px-3">
-      <ArrowRight className="size-4 text-slate-600" />
+      <ArrowRight className="size-4 text-ink-muted" />
       <div className="flex items-center gap-2 font-mono text-xs whitespace-nowrap">
-        <span className={bpmSafe ? 'text-slate-400' : 'text-rose-400'}>
+        <span className={bpmSafe ? 'text-ink-muted' : 'text-rose-600'}>
           {bpmDelta === null
             ? 'BPM —'
             : `${bpmDelta >= 0 ? '+' : ''}${bpmDelta.toFixed(1)} BPM`}
         </span>
-        <span className="text-slate-700">|</span>
+        <span className="text-ink-faint">|</span>
         <span
           className={
             relation === null
-              ? 'text-slate-500'
+              ? 'text-ink-muted'
               : relation.compatible
-                ? 'text-emerald-400'
-                : 'text-amber-400'
+                ? 'text-emerald-700'
+                : 'text-amber-700'
           }
         >
           {relation?.label ?? 'Key —'}
         </span>
-        <span className="text-slate-700">|</span>
-        <span className="text-slate-400">
+        <span className="text-ink-faint">|</span>
+        <span className="text-ink-muted">
           {energyDelta === null
             ? 'Energy —'
             : `${energyDelta >= 0 ? '+' : ''}${energyDelta.toFixed(1)} energy`}
@@ -256,7 +267,7 @@ export function NowNext() {
     isPlaying && slot !== null && playingTrack?.track_id === slot.track.track_id
 
   return (
-    <section className="flex shrink-0 items-stretch gap-2 border-b border-slate-800 bg-slate-950 px-4 py-2.5">
+    <section className="flex shrink-0 items-stretch gap-2 bg-canvas px-4 py-2.5">
       <SlotCard
         slot={current}
         role="current"

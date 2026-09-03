@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
-"""Perceptual energy scoring for the SmartDJ library.
+"""Peak-window perceptual energy scoring for the SmartDJ library.
 
-The original metric was the loudest 45s RMS window mapped onto a fixed dB
-range. Because commercial dance masters are all limited to roughly the same
-loudness, that measured the mastering engineer more than the track: 96% of the
-library landed between 7 and 9, and 56% sat on a single value.
+Energy is measured on the loudest 45-second stretch of a track, not the whole
+file. That makes the score invariant to intro/outro length and comparable
+across EDM (long builds), hip-hop (short runtime), and more dynamic genres.
 
-This module replaces it with two changes:
+Pipeline:
 
-1. **Spectral features instead of loudness alone.** Brightness (spectral
-   centroid, high-frequency ratio) and rhythmic density (spectral flux, onset
-   rate) track perceived intensity far better than level does. Loudness stays
-   as a small contributor.
-2. **Percentile ranking within your own library.** Each feature is converted to
-   its rank among all tracks before being combined, and the composite is ranked
-   again to produce the final 0-10. Energy is inherently relative — "an 8" only
-   means anything next to the rest of the crate — and ranking guarantees the
-   scale actually spreads.
+1. Decode mono at 22.05 kHz.
+2. Slide a 45 s window at a 5 s hop and keep the chunk with peak RMS.
+3. Extract six features **only inside that chunk**.
+4. Percentile-rank each feature in the library, mix them, and rank the
+   composite again onto 0–10.
 
-Raw features are persisted per track, so the weights below can be retuned and
-scores recomputed without touching the audio again.
+Raw features are stored per track so weights can be retuned with
+``recompute_energy.py --rescore-only``.
 """
 
 from __future__ import annotations
@@ -28,213 +23,190 @@ import json
 from pathlib import Path
 from typing import Any
 
+import librosa
 import numpy as np
+from scipy.stats import rankdata
 
-ANALYSIS_SAMPLE_RATE = 44100
+ANALYSIS_SAMPLE_RATE = 22050
+WINDOW_SEC = 45.0
+HOP_SEC = 5.0
 
-# STFT geometry: 46ms frames at 23ms hop, fine enough to resolve onsets.
-FRAME_SIZE = 2048
-HOP_SIZE = 1024
-#: Frames per vectorized FFT batch, bounding peak memory on long files.
-FRAME_BATCH = 2048
+N_FFT = 2048
+HOP_LENGTH = 512
 
-#: Split between body and "air"/percussion presence.
 HF_CUTOFF_HZ = 4000.0
+LF_LOW_HZ = 30.0
+LF_HIGH_HZ = 150.0
+MIN_TEMPO_BPM = 60.0
 
-#: Frames quieter than this fraction of the median frame energy are treated as
-#: silence and excluded, so intros and outros do not drag brightness down.
-SILENCE_ENERGY_RATIO = 0.05
-
-LOUDNESS_WINDOW_SEC = 45.0
-
-#: Minimum gap between accepted onsets (seconds); ~750 BPM ceiling.
-MIN_ONSET_GAP_SEC = 0.08
-
-#: Feature name -> weight in the composite. Brightness and rhythmic density get
-#: 45% each; loudness is deliberately small because it is mastering-dominated.
 FEATURE_WEIGHTS: dict[str, float] = {
-    "energy_hf_ratio": 0.25,
-    "energy_centroid_hz": 0.20,
-    "energy_onset_rate": 0.25,
-    "energy_flux": 0.20,
-    "energy_loudness_db": 0.10,
+    "energy_hf_ratio": 0.20,
+    "energy_centroid_hz": 0.15,
+    "energy_lf_ratio": 0.15,
+    "energy_onsets_per_beat": 0.20,
+    "energy_flux": 0.15,
+    "energy_loudness_db": 0.15,
 }
 
 FEATURE_COLUMNS: tuple[str, ...] = tuple(FEATURE_WEIGHTS)
 
-#: Quantile breakpoints stored in the calibration file (p0..p100).
 CALIBRATION_POINTS = 101
 
 DEFAULT_CALIBRATION_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "energy_calibration.json"
 )
 
-_MONO_LOADER: Any = None
-
-
-def _mono_loader() -> Any:
-    """Import only MonoLoader; the genre/rhythm models are not needed here."""
-    global _MONO_LOADER
-    if _MONO_LOADER is None:
-        from essentia.standard import MonoLoader  # type: ignore
-
-        _MONO_LOADER = MonoLoader
-    return _MONO_LOADER
-
 
 def load_audio(file_path: str | Path, sample_rate: int = ANALYSIS_SAMPLE_RATE):
-    """Decode one file to mono float at ``sample_rate``."""
-    loader = _mono_loader()
-    audio = loader(filename=str(file_path), sampleRate=sample_rate)()
-    if audio is None or len(audio) == 0:
+    """Decode one file to mono float at ``sample_rate``.
+
+    ``librosa`` is the primary decoder. AAC/M4A often needs Essentia's
+    ``MonoLoader`` as a fallback because librosa has no bundled AAC support.
+    """
+    path = str(file_path)
+    try:
+        audio, _sr = librosa.load(path, sr=sample_rate, mono=True)
+        if audio is not None and len(audio) > 0:
+            return np.asarray(audio, dtype=np.float32)
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        from essentia.standard import MonoLoader  # type: ignore
+
+        audio = MonoLoader(filename=path, sampleRate=sample_rate)()
+        if audio is not None and len(audio) > 0:
+            return np.asarray(audio, dtype=np.float32)
+    except Exception:  # noqa: BLE001
         return None
-    return audio
+    return None
 
 
-def peak_window_loudness_db(
-    samples: np.ndarray, sample_rate: int, window_sec: float = LOUDNESS_WINDOW_SEC
-) -> float | None:
-    """dBFS of the loudest ``window_sec`` RMS window, via a prefix sum."""
-    if samples.size == 0:
-        return None
-    window = min(int(window_sec * sample_rate), samples.size)
-    if window <= 0:
-        return None
+def _resample_if_needed(samples: np.ndarray, sample_rate: int) -> tuple[np.ndarray, int]:
+    if sample_rate == ANALYSIS_SAMPLE_RATE:
+        return samples, sample_rate
+    resampled = librosa.resample(
+        samples.astype(np.float32, copy=False),
+        orig_sr=sample_rate,
+        target_sr=ANALYSIS_SAMPLE_RATE,
+    )
+    return np.asarray(resampled, dtype=np.float32), ANALYSIS_SAMPLE_RATE
+
+
+def locate_peak_window(
+    samples: np.ndarray,
+    sample_rate: int,
+    window_sec: float = WINDOW_SEC,
+    hop_sec: float = HOP_SEC,
+) -> np.ndarray:
+    """Return the 45 s chunk with the highest RMS, or the whole buffer if shorter."""
+    window = int(window_sec * sample_rate)
+    if samples.size <= window:
+        return samples
+
+    hop = max(int(hop_sec * sample_rate), 1)
     squared = np.cumsum(
         np.concatenate(([0.0], np.square(samples, dtype=np.float64)))
     )
-    sums = squared[window:] - squared[:-window]
-    if sums.size == 0:
-        sums = squared[-1:] - squared[:1]
-    best_mean_square = float(np.max(sums) / window)
-    if best_mean_square <= 0:
-        return None
-    return float(20.0 * np.log10(max(np.sqrt(best_mean_square), 1e-12)))
+
+    best_start = 0
+    best_sum = -1.0
+    last_start = samples.size - window
+    for start in range(0, last_start + 1, hop):
+        energy = float(squared[start + window] - squared[start])
+        if energy > best_sum:
+            best_sum = energy
+            best_start = start
+    if last_start % hop != 0:
+        energy = float(squared[last_start + window] - squared[last_start])
+        if energy > best_sum:
+            best_start = last_start
+    return samples[best_start : best_start + window]
 
 
-def _onset_rate(flux: np.ndarray, hop_sec: float) -> float | None:
-    """Onsets per second from peaks in the flux novelty curve."""
-    if flux.size < 3:
+def _window_features(peak: np.ndarray, sample_rate: int) -> dict[str, float] | None:
+    """Six discrete features, computed only on the peak window."""
+    if peak.size < N_FFT * 2:
         return None
-    smoothed = np.convolve(flux, np.ones(3) / 3.0, mode="same")
-    threshold = float(np.median(smoothed) + np.std(smoothed))
-    interior = smoothed[1:-1]
-    is_peak = (
-        (interior > smoothed[:-2])
-        & (interior >= smoothed[2:])
-        & (interior > threshold)
+
+    rms = float(np.sqrt(np.mean(np.square(peak, dtype=np.float64))))
+    loudness_db = float(20.0 * np.log10(rms + 1e-9))
+
+    stft = librosa.stft(peak, n_fft=N_FFT, hop_length=HOP_LENGTH, window="hann")
+    magnitude = np.abs(stft)
+    if magnitude.size == 0 or not np.any(magnitude):
+        return None
+
+    power = np.square(magnitude, dtype=np.float64)
+    freqs = librosa.fft_frequencies(sr=sample_rate, n_fft=N_FFT)
+    total_power = float(power.sum())
+    if total_power <= 0:
+        return None
+
+    hf_ratio = float(power[freqs >= HF_CUTOFF_HZ].sum() / total_power)
+    lf_mask = (freqs >= LF_LOW_HZ) & (freqs <= LF_HIGH_HZ)
+    lf_ratio = float(power[lf_mask].sum() / total_power)
+
+    freq_weights = magnitude.sum(axis=0)
+    safe = np.where(freq_weights > 0, freq_weights, 1.0)
+    centroid = float(np.mean((freqs[:, None] * magnitude).sum(axis=0) / safe))
+
+    frame_power = power.sum(axis=0, keepdims=True)
+    normalized = power / np.maximum(frame_power, 1e-12)
+    if normalized.shape[1] < 2:
+        flux = 0.0
+    else:
+        deltas = np.diff(normalized, axis=1)
+        flux = float(np.clip(deltas, 0.0, None).sum(axis=0).mean())
+
+    onset_env = librosa.onset.onset_strength(
+        y=peak, sr=sample_rate, hop_length=HOP_LENGTH
     )
-    candidates = np.flatnonzero(is_peak) + 1
-    if candidates.size == 0:
-        return 0.0
+    onset_frames = librosa.onset.onset_detect(
+        onset_envelope=onset_env, sr=sample_rate, hop_length=HOP_LENGTH, units="frames"
+    )
+    duration_sec = peak.size / float(sample_rate)
+    onsets_per_sec = float(len(onset_frames) / duration_sec) if duration_sec > 0 else 0.0
+    tempo = float(
+        librosa.feature.tempo(
+            onset_envelope=onset_env, sr=sample_rate, hop_length=HOP_LENGTH
+        )[0]
+    )
+    if not np.isfinite(tempo) or tempo <= 0:
+        tempo = MIN_TEMPO_BPM
+    onsets_per_beat = onsets_per_sec / (max(tempo, MIN_TEMPO_BPM) / 60.0)
 
-    min_gap = max(int(MIN_ONSET_GAP_SEC / hop_sec), 1)
-    kept = 0
-    last = -min_gap
-    for index in candidates:
-        if index - last >= min_gap:
-            kept += 1
-            last = int(index)
-
-    duration = flux.size * hop_sec
-    if duration <= 0:
+    features = {
+        "energy_hf_ratio": hf_ratio,
+        "energy_lf_ratio": lf_ratio,
+        "energy_centroid_hz": centroid,
+        "energy_flux": flux,
+        "energy_onsets_per_beat": onsets_per_beat,
+        "energy_loudness_db": loudness_db,
+    }
+    if any(not np.isfinite(value) for value in features.values()):
         return None
-    return kept / duration
+    return features
 
 
 def extract_energy_features(
     audio, sample_rate: int = ANALYSIS_SAMPLE_RATE
 ) -> dict[str, float] | None:
-    """Raw perceptual-energy features for one decoded track.
-
-    Returns ``None`` for empty or unusably short audio. All spectral aggregates
-    are energy-weighted so quiet passages do not skew the result.
-    """
+    """Peak-window features for one already-decoded buffer."""
     if audio is None or len(audio) == 0:
         return None
     samples = np.asarray(audio, dtype=np.float32)
-    if samples.size < FRAME_SIZE * 2:
+    samples, sample_rate = _resample_if_needed(samples, sample_rate)
+    if samples.size < N_FFT * 2:
         return None
-
-    loudness_db = peak_window_loudness_db(samples, sample_rate)
-
-    frames = np.lib.stride_tricks.sliding_window_view(samples, FRAME_SIZE)[
-        ::HOP_SIZE
-    ]
-    if frames.shape[0] < 2:
-        return None
-
-    window = np.hanning(FRAME_SIZE).astype(np.float32)
-    freqs = np.fft.rfftfreq(FRAME_SIZE, d=1.0 / sample_rate)
-    hf_mask = freqs >= HF_CUTOFF_HZ
-
-    frame_energy: list[np.ndarray] = []
-    frame_centroid: list[np.ndarray] = []
-    frame_hf: list[np.ndarray] = []
-    frame_flux: list[np.ndarray] = []
-    previous_norm: np.ndarray | None = None
-
-    for start in range(0, frames.shape[0], FRAME_BATCH):
-        batch = frames[start : start + FRAME_BATCH] * window
-        magnitude = np.abs(np.fft.rfft(batch, axis=1))
-
-        power = np.square(magnitude, dtype=np.float64)
-        energy = power.sum(axis=1)
-        magnitude_sum = magnitude.sum(axis=1)
-        safe_magnitude = np.where(magnitude_sum > 0, magnitude_sum, 1.0)
-        safe_energy = np.where(energy > 0, energy, 1.0)
-
-        frame_energy.append(energy)
-        frame_centroid.append((magnitude * freqs).sum(axis=1) / safe_magnitude)
-        frame_hf.append(power[:, hf_mask].sum(axis=1) / safe_energy)
-
-        # Loudness-invariant spectral flux: rectified change in shape.
-        normalized = magnitude / safe_magnitude[:, None]
-        if previous_norm is not None:
-            normalized = np.vstack((previous_norm[None, :], normalized))
-        deltas = np.diff(normalized, axis=0)
-        frame_flux.append(np.clip(deltas, 0.0, None).sum(axis=1))
-        previous_norm = normalized[-1]
-
-    energy_all = np.concatenate(frame_energy)
-    centroid_all = np.concatenate(frame_centroid)
-    hf_all = np.concatenate(frame_hf)
-    flux_all = np.concatenate(frame_flux)
-
-    median_energy = float(np.median(energy_all))
-    voiced = energy_all > median_energy * SILENCE_ENERGY_RATIO
-    if not voiced.any():
-        voiced = np.ones_like(energy_all, dtype=bool)
-
-    weights = energy_all[voiced]
-    weight_total = float(weights.sum())
-    if weight_total <= 0:
-        weights = np.ones_like(weights)
-        weight_total = float(weights.sum())
-
-    centroid_hz = float(np.dot(centroid_all[voiced], weights) / weight_total)
-    hf_ratio = float(np.dot(hf_all[voiced], weights) / weight_total)
-    flux_mean = float(np.mean(flux_all[voiced[: flux_all.size]]))
-    onset_rate = _onset_rate(flux_all, HOP_SIZE / float(sample_rate))
-
-    features = {
-        "energy_loudness_db": loudness_db,
-        "energy_centroid_hz": centroid_hz,
-        "energy_hf_ratio": hf_ratio,
-        "energy_flux": flux_mean,
-        "energy_onset_rate": onset_rate,
-    }
-    if any(
-        value is None or not np.isfinite(value) for value in features.values()
-    ):
-        return None
-    return {name: float(value) for name, value in features.items()}
+    peak = locate_peak_window(samples, sample_rate)
+    return _window_features(peak, sample_rate)
 
 
 def analyze_energy_features(
     file_path: str | Path, sample_rate: int = ANALYSIS_SAMPLE_RATE
 ) -> dict[str, float] | None:
-    """Decode a file and extract its energy features."""
+    """Decode a file and extract its peak-window energy features."""
     audio = load_audio(file_path, sample_rate)
     if audio is None:
         return None
@@ -249,20 +221,7 @@ def percentile_ranks(values: np.ndarray) -> np.ndarray:
         return array
     if count == 1:
         return np.array([0.5])
-
-    order = np.argsort(array, kind="mergesort")
-    ordered = array[order]
-    ranks = np.empty(count, dtype=np.float64)
-
-    index = 0
-    while index < count:
-        end = index
-        while end + 1 < count and ordered[end + 1] == ordered[index]:
-            end += 1
-        ranks[order[index : end + 1]] = (index + end) / 2.0
-        index = end + 1
-
-    return ranks / (count - 1)
+    return (rankdata(array, method="average") - 1.0) / (count - 1)
 
 
 def composite_from_ranks(ranks: dict[str, np.ndarray]) -> np.ndarray:
@@ -290,8 +249,11 @@ def build_calibration(
     """Quantile breakpoints letting a single new track be scored later."""
     probabilities = np.linspace(0.0, 100.0, CALIBRATION_POINTS)
     return {
-        "version": 1,
+        "version": 2,
         "track_count": int(composite.size),
+        "window_sec": WINDOW_SEC,
+        "hop_sec": HOP_SEC,
+        "sample_rate": ANALYSIS_SAMPLE_RATE,
         "weights": FEATURE_WEIGHTS,
         "features": {
             name: np.percentile(values, probabilities).tolist()
@@ -346,7 +308,9 @@ def score_with_calibration(
     if not ranks:
         return None
 
-    total_weight = sum(FEATURE_WEIGHTS[name] for name in ranks if name in FEATURE_WEIGHTS)
+    total_weight = sum(
+        FEATURE_WEIGHTS[name] for name in ranks if name in FEATURE_WEIGHTS
+    )
     if total_weight <= 0:
         return None
     composite = sum(

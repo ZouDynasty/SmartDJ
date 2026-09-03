@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, ListMusic, Pause, Play, Trash2, X } from 'lucide-react'
+import { ListMusic, Pause, Play, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buildSetPoints, formatDuration } from '@/lib/setMath'
 import type { SetPoint } from '@/lib/setMath'
@@ -33,12 +33,12 @@ interface SetCardProps {
 /** Minor (A) keys read cool, major (B) keys read warm — quick harmonic scan. */
 function keyBadgeClass(keyLabel: string): string {
   if (keyLabel.endsWith('A')) {
-    return 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300'
+    return 'bg-sky-100 text-sky-700'
   }
   if (keyLabel.endsWith('B')) {
-    return 'border-amber-400/40 bg-amber-400/10 text-amber-300'
+    return 'bg-amber-100 text-amber-700'
   }
-  return 'border-slate-700 bg-slate-800 text-slate-400'
+  return 'bg-raised text-ink-muted'
 }
 
 function SetCard({
@@ -66,100 +66,96 @@ function SetCard({
       onMouseEnter={() => onHover(point.instanceId)}
       onMouseLeave={() => onHover(null)}
       className={cn(
-        'group relative flex w-full cursor-grab flex-col gap-2 rounded-lg border p-3',
-        'bg-slate-900 transition-colors select-none',
+        'group relative flex w-full cursor-grab items-center gap-2 rounded-md border px-2 py-1.5',
+        'bg-theme-raised transition-colors select-none',
         isHighlighted
-          ? 'border-cyan-400 bg-slate-800 shadow-[0_0_0_1px_rgba(34,211,238,0.4),0_0_24px_-6px_rgba(34,211,238,0.6)]'
-          : 'border-slate-800 hover:border-slate-700',
-        isDragging && 'z-10 cursor-grabbing opacity-80 shadow-2xl shadow-black/60',
+          ? 'border-accent bg-theme-raised shadow-[0_0_0_1px_rgba(212,92,92,0.35)]'
+          : 'border-theme-line hover:border-accent',
+        isDragging &&
+          'z-10 cursor-grabbing opacity-90 shadow-lg shadow-zinc-500/30',
       )}
       {...attributes}
       {...listeners}
     >
-      <div className="flex items-start gap-2">
-        <span className="font-mono text-xs font-semibold text-slate-500">
-          {String(point.index + 1).padStart(2, '0')}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-100">
-            {point.title}
-          </p>
-          <p className="truncate text-xs text-slate-400">{point.artist}</p>
-        </div>
-        <button
-          type="button"
-          aria-label={`Remove ${point.title} from set`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            onRemove(point.instanceId)
-          }}
-          className={cn(
-            'rounded p-1 text-slate-500 transition-colors',
-            'hover:bg-rose-500/15 hover:text-rose-400',
-          )}
-        >
-          <X className="size-3.5" />
-        </button>
+      {/* Index doubles as the play control on hover, saving a column. */}
+      <button
+        type="button"
+        aria-label={isPlaying ? `Pause ${point.title}` : `Play ${point.title}`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation()
+          onPlay(point.instanceId)
+        }}
+        className={cn(
+          'flex size-5 shrink-0 items-center justify-center rounded font-mono text-xs transition-colors',
+          isPlaying
+            ? 'bg-accent text-white'
+            : 'text-ink-muted hover:bg-theme hover:text-accent',
+        )}
+      >
+        {isPlaying ? (
+          <Pause className="size-2.5 fill-current" />
+        ) : (
+          <>
+            <span className="group-hover:hidden">
+              {String(point.index + 1).padStart(2, '0')}
+            </span>
+            <Play className="hidden size-2.5 fill-current group-hover:block" />
+          </>
+        )}
+      </button>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-semibold leading-tight text-ink">
+          {point.title}
+        </p>
+        <p className="flex items-center gap-1 truncate text-[11px] leading-tight text-ink-muted">
+          <span className="truncate">{point.artist}</span>
+          <span className="ml-auto shrink-0 font-mono text-ink-faint">
+            {formatDuration(point.startSec)}
+          </span>
+        </p>
       </div>
 
-      <div className="flex items-center gap-2">
-        <span className="rounded border border-cyan-400/40 bg-cyan-400/10 px-1.5 py-0.5 font-mono text-xs text-cyan-300">
-          {point.bpm === null ? '—' : point.bpm.toFixed(1)}
+      <div className="flex shrink-0 flex-col items-end gap-0.5 font-mono text-[11px] leading-tight">
+        <span className="flex items-center gap-1">
+          <span className="text-sky-600">
+            {point.bpm === null ? '—' : point.bpm.toFixed(0)}
+          </span>
+          <span
+            className={cn(
+              'rounded px-1 text-[10px]',
+              keyBadgeClass(point.keyLabel),
+            )}
+          >
+            {point.keyLabel}
+          </span>
         </span>
-        <span
-          className={cn(
-            'rounded border px-1.5 py-0.5 font-mono text-xs',
-            keyBadgeClass(point.keyLabel),
-          )}
-        >
-          {point.keyLabel}
-        </span>
-        <span className="ml-auto font-mono text-xs text-slate-400">
-          {formatDuration(point.durationSec)}
-        </span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-800">
-          <div
-            className="h-full rounded-full bg-fuchsia-400"
-            style={{ width: `${(point.energy ?? 0) * 100}%` }}
-          />
-        </div>
-        <span className="font-mono text-xs text-fuchsia-300">
-          {point.energy === null ? '—' : point.energy.toFixed(2)}
+        <span className="flex items-center gap-1">
+          <span className="text-violet-600">
+            {point.energyRaw === null ? '—' : point.energyRaw.toFixed(1)}
+          </span>
+          <span className="text-ink-faint">
+            {formatDuration(point.durationSec)}
+          </span>
         </span>
       </div>
 
-      <div className="flex items-center gap-1.5 border-t border-slate-800 pt-2 text-xs text-slate-500">
-        <button
-          type="button"
-          aria-label={isPlaying ? `Pause ${point.title}` : `Play ${point.title}`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            onPlay(point.instanceId)
-          }}
-          className={cn(
-            'flex size-5 items-center justify-center rounded-full transition-colors',
-            isPlaying
-              ? 'bg-cyan-400 text-slate-950'
-              : 'text-slate-500 hover:bg-slate-700 hover:text-cyan-300',
-          )}
-        >
-          {isPlaying ? (
-            <Pause className="size-2.5 fill-current" />
-          ) : (
-            <Play className="size-2.5 fill-current" />
-          )}
-        </button>
-        <span className="font-mono">
-          {formatDuration(point.startSec)} →{' '}
-          {formatDuration(point.startSec + point.durationSec)}
-        </span>
-        <GripVertical className="ml-auto size-3 opacity-0 transition-opacity group-hover:opacity-100" />
-      </div>
+      <button
+        type="button"
+        aria-label={`Remove ${point.title} from set`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation()
+          onRemove(point.instanceId)
+        }}
+        className={cn(
+          'shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-all',
+          'group-hover:opacity-100 hover:bg-rose-100 hover:text-rose-500',
+        )}
+      >
+        <X className="size-3" />
+      </button>
     </li>
   )
 }
@@ -226,19 +222,19 @@ export function SetBuilder() {
   )
 
   return (
-    <section className="flex w-80 shrink-0 flex-col border-l border-slate-800 bg-slate-950">
-      <header className="flex shrink-0 flex-col gap-1.5 border-b border-slate-800 px-3 py-2.5">
+    <section className="flex w-80 shrink-0 flex-col bg-theme">
+      <header className="flex shrink-0 flex-col gap-1.5 border-b border-theme-line bg-theme-raised px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <ListMusic className="size-4 shrink-0 text-fuchsia-400" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+          <ListMusic className="size-4 shrink-0 text-accent" />
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink">
             Active Set Queue
           </h2>
-          <span className="ml-auto font-mono text-xs text-slate-500">
+          <span className="ml-auto font-mono text-xs text-ink-muted">
             {activeQueue.length}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs text-slate-600">
+          <span className="font-mono text-xs text-ink-muted">
             drag to reorder
           </span>
           {activeQueue.length > 0 && (
@@ -246,8 +242,8 @@ export function SetBuilder() {
               type="button"
               onClick={clearSet}
               className={cn(
-                'ml-auto flex items-center gap-1.5 rounded-md border border-slate-800 px-2 py-0.5',
-                'text-xs text-slate-400 transition-colors hover:border-rose-500/50 hover:text-rose-400',
+                'ml-auto flex items-center gap-1.5 rounded-md border border-theme-line px-2 py-0.5',
+                'text-xs text-ink-muted transition-colors hover:border-rose-400 hover:text-rose-600',
               )}
             >
               <Trash2 className="size-3" />
@@ -258,8 +254,8 @@ export function SetBuilder() {
       </header>
 
       {points.length === 0 ? (
-        <div className="m-3 rounded-lg border border-dashed border-slate-800 px-4 py-8 text-center">
-          <p className="text-sm text-slate-500">
+        <div className="m-3 rounded-lg border border-dashed border-theme-line bg-theme-raised px-4 py-8 text-center">
+          <p className="text-sm text-ink-muted">
             Queue is empty — add tracks from the catalog.
           </p>
         </div>
@@ -272,7 +268,7 @@ export function SetBuilder() {
           <SortableContext items={ids} strategy={verticalListSortingStrategy}>
             <ol
               ref={listRef}
-              className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3"
+              className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2"
             >
               {points.map((point) => (
                 <SetCard

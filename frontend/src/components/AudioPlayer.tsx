@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pause, Play, Volume2, X } from 'lucide-react'
+import { Artwork } from '@/components/Artwork'
 import { cn } from '@/lib/utils'
 import { trackAudioUrl } from '@/lib/api'
 import {
@@ -71,7 +72,7 @@ export function AudioPlayer() {
   const bpm = trackBpm(playingTrack)
 
   return (
-    <footer className="flex shrink-0 items-center gap-4 border-t border-slate-800 bg-slate-900/80 px-4 py-2.5">
+    <footer className="flex shrink-0 items-center gap-4 bg-theme px-4 py-2.5">
       <audio
         ref={audioRef}
         src={trackAudioUrl(playingTrack.track_id)}
@@ -92,7 +93,7 @@ export function AudioPlayer() {
         aria-label={isPlaying ? 'Pause' : 'Play'}
         className={cn(
           'flex size-9 shrink-0 items-center justify-center rounded-full',
-          'bg-cyan-400 text-slate-950 transition-colors hover:bg-cyan-300',
+          'bg-accent text-white transition-colors hover:bg-accent-hover',
         )}
       >
         {isPlaying ? (
@@ -102,29 +103,35 @@ export function AudioPlayer() {
         )}
       </button>
 
-      <div className="min-w-0 w-64 shrink-0">
-        <p className="truncate text-sm font-semibold text-slate-100">
+      <Artwork
+        trackId={playingTrack.track_id}
+        title={trackTitle(playingTrack)}
+        className="size-10"
+      />
+
+      <div className="min-w-0 w-56 shrink-0">
+        <p className="truncate text-sm font-semibold text-ink">
           {trackTitle(playingTrack)}
         </p>
-        <p className="truncate text-xs text-slate-400">
+        <p className="truncate text-xs text-ink-muted">
           {trackArtist(playingTrack)}
         </p>
       </div>
 
       <span className="hidden shrink-0 items-center gap-1.5 font-mono text-xs md:flex">
-        <span className="rounded border border-cyan-400/40 bg-cyan-400/10 px-1.5 py-0.5 text-cyan-300">
+        <span className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-sky-700">
           {bpm === null ? '—' : bpm.toFixed(1)}
         </span>
-        <span className="rounded border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 text-amber-300">
+        <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-700">
           {trackKey(playingTrack) ?? '—'}
         </span>
-        <span className="rounded border border-fuchsia-400/40 bg-fuchsia-400/10 px-1.5 py-0.5 text-fuchsia-300">
+        <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-violet-700">
           {energy === null ? '—' : energy.toFixed(2)}
         </span>
       </span>
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="shrink-0 font-mono text-xs text-slate-400">
+        <span className="shrink-0 font-mono text-xs text-ink-muted">
           {formatDuration(position)}
         </span>
         <input
@@ -135,15 +142,15 @@ export function AudioPlayer() {
           value={Math.min(position, effectiveDuration || 1)}
           onChange={(event) => handleSeek(Number(event.target.value))}
           aria-label="Seek"
-          className="h-1 min-w-0 flex-1 cursor-pointer accent-cyan-400"
+          className="h-1 min-w-0 flex-1 cursor-pointer accent-accent"
         />
-        <span className="shrink-0 font-mono text-xs text-slate-500">
+        <span className="shrink-0 font-mono text-xs text-ink-faint">
           {formatDuration(effectiveDuration)}
         </span>
       </div>
 
       <div className="hidden shrink-0 items-center gap-1.5 lg:flex">
-        <Volume2 className="size-3.5 text-slate-500" />
+        <Volume2 className="size-3.5 text-ink-muted" />
         <input
           type="range"
           min={0}
@@ -152,12 +159,12 @@ export function AudioPlayer() {
           value={volume}
           onChange={(event) => setVolume(Number(event.target.value))}
           aria-label="Volume"
-          className="h-1 w-20 cursor-pointer accent-cyan-400"
+          className="h-1 w-20 cursor-pointer accent-accent"
         />
       </div>
 
       {error && (
-        <span className="max-w-56 shrink-0 truncate text-xs text-rose-400">
+        <span className="max-w-56 shrink-0 truncate text-xs text-rose-500">
           {error}
         </span>
       )}
@@ -166,7 +173,7 @@ export function AudioPlayer() {
         type="button"
         onClick={stopPlayback}
         aria-label="Close player"
-        className="shrink-0 rounded p-1 text-slate-500 transition-colors hover:text-slate-200"
+        className="shrink-0 rounded p-1 text-ink-muted transition-colors hover:text-ink"
       >
         <X className="size-4" />
       </button>

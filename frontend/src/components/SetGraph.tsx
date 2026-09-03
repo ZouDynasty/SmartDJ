@@ -23,10 +23,14 @@ import type { SetPoint } from '@/lib/setMath'
 import { MAX_ZOOM, MIN_ZOOM, useSetStore } from '@/store/useSetStore'
 import type { MetricView } from '@/types'
 
+/**
+ * Mid-tone accents rather than true pastels: the surfaces are pastel, so a
+ * 2px line needs this much weight to stay legible against them.
+ */
 const SERIES = {
-  bpm: { label: 'BPM', color: '#22d3ee' },
-  energy: { label: 'Energy', color: '#e879f9' },
-  key: { label: 'Key', color: '#fbbf24' },
+  bpm: { label: 'BPM', color: '#0ea5e9' },
+  energy: { label: 'Energy', color: '#8b5cf6' },
+  key: { label: 'Key', color: '#f59e0b' },
 } as const
 
 const VIEW_OPTIONS: { value: MetricView; label: string }[] = [
@@ -36,9 +40,11 @@ const VIEW_OPTIONS: { value: MetricView; label: string }[] = [
   { value: 'key', label: 'Key Only' },
 ]
 
-const GRID_COLOR = '#1e293b'
-const AXIS_COLOR = '#334155'
-const TICK_STYLE = { fill: '#94a3b8', fontSize: 11 } as const
+const GRID_COLOR = '#aaaab1'
+const AXIS_COLOR = '#aaaab1'
+const TICK_STYLE = { fill: '#3f3f46', fontSize: 11 } as const
+/** Unhighlighted dots sit on raised, one step above the canvas. */
+const DOT_FILL = '#c6c6cd'
 
 /** Camelot axis renders every one of the 24 harmonic ticks. */
 const KEY_TICKS = CAMELOT_KEYS.map((_, index) => index)
@@ -92,34 +98,34 @@ function SetTooltip({ active, payload }: TooltipContentProps) {
   if (!point?.instanceId) return null
 
   return (
-    <div className="min-w-52 rounded-lg border border-slate-700 bg-slate-900/95 p-3 shadow-xl shadow-black/50 backdrop-blur">
+    <div className="min-w-52 rounded-lg border border-line bg-panel p-3 shadow-lg shadow-zinc-500/20">
       <p className="flex items-baseline gap-2">
-        <span className="font-mono text-xs text-slate-500">
+        <span className="font-mono text-xs text-ink-faint">
           {String(point.index + 1).padStart(2, '0')}
         </span>
-        <span className="truncate text-sm font-semibold text-slate-100">
+        <span className="truncate text-sm font-semibold text-ink">
           {point.title}
         </span>
       </p>
-      <p className="mt-0.5 truncate text-xs text-slate-400">{point.artist}</p>
+      <p className="mt-0.5 truncate text-xs text-ink-muted">{point.artist}</p>
       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-        <dt className="text-slate-500">BPM</dt>
+        <dt className="text-ink-faint">BPM</dt>
         <dd className="text-right font-mono" style={{ color: SERIES.bpm.color }}>
           {point.bpm === null ? '—' : point.bpm.toFixed(1)}
         </dd>
-        <dt className="text-slate-500">Key</dt>
+        <dt className="text-ink-faint">Key</dt>
         <dd className="text-right font-mono" style={{ color: SERIES.key.color }}>
           {point.keyLabel}
         </dd>
-        <dt className="text-slate-500">Energy</dt>
+        <dt className="text-ink-faint">Energy</dt>
         <dd
           className="text-right font-mono"
           style={{ color: SERIES.energy.color }}
         >
           {point.energy === null ? '—' : point.energy.toFixed(2)}
         </dd>
-        <dt className="text-slate-500">Midpoint</dt>
-        <dd className="text-right font-mono text-slate-300">
+        <dt className="text-ink-faint">Midpoint</dt>
+        <dd className="text-right font-mono text-ink-muted">
           {formatDuration(point.midpointSec)}
         </dd>
       </dl>
@@ -178,7 +184,7 @@ export function SetGraph() {
             cx={cx}
             cy={cy}
             r={isActive ? 7 : 3.5}
-            fill={isActive ? SERIES[series].color : '#020617'}
+            fill={isActive ? SERIES[series].color : DOT_FILL}
             stroke={SERIES[series].color}
             strokeWidth={isActive ? 2.5 : 1.75}
           />
@@ -188,20 +194,20 @@ export function SetGraph() {
   )
 
   return (
-    <section className="flex h-[320px] shrink-0 flex-col border-b border-slate-800 bg-slate-950">
-      <header className="flex flex-wrap items-center gap-3 px-4 py-2.5">
-        <div className="flex items-center gap-2 text-slate-300">
-          <Activity className="size-4 text-cyan-400" />
+    <section className="flex h-[320px] shrink-0 flex-col bg-canvas">
+      <header className="flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2.5">
+        <div className="flex items-center gap-2 text-ink">
+          <Activity className="size-4 text-accent" />
           <h2 className="text-xs font-semibold uppercase tracking-wider">
             Set Trajectory
           </h2>
         </div>
 
-        <span className="font-mono text-xs text-slate-500">
+        <span className="font-mono text-xs text-ink-muted">
           {activeQueue.length} tracks · {formatDuration(totalSec)}
         </span>
 
-        <div className="ml-auto flex items-center gap-1 rounded-md border border-slate-800 bg-slate-900 p-0.5">
+        <div className="ml-auto flex items-center gap-1 rounded-md border border-line bg-raised p-0.5">
           {VIEW_OPTIONS.map((option) => (
             <button
               key={option.value}
@@ -210,8 +216,8 @@ export function SetGraph() {
               className={cn(
                 'rounded px-2.5 py-1 text-xs font-medium transition-colors',
                 metricView === option.value
-                  ? 'bg-slate-700 text-slate-50'
-                  : 'text-slate-400 hover:text-slate-200',
+                  ? 'bg-theme text-ink'
+                  : 'text-ink-muted hover:text-ink',
               )}
             >
               {option.label}
@@ -219,17 +225,17 @@ export function SetGraph() {
           ))}
         </div>
 
-        <div className="flex items-center gap-1 rounded-md border border-slate-800 bg-slate-900 p-0.5">
+        <div className="flex items-center gap-1 rounded-md border border-line bg-raised p-0.5">
           <button
             type="button"
             onClick={zoomOut}
             disabled={zoom <= MIN_ZOOM}
             title="Zoom out"
-            className="rounded p-1.5 text-slate-400 transition-colors hover:text-slate-100 disabled:opacity-30"
+            className="rounded p-1.5 text-ink-muted transition-colors hover:text-ink disabled:opacity-30"
           >
             <ZoomOut className="size-3.5" />
           </button>
-          <span className="w-10 text-center font-mono text-xs text-slate-400">
+          <span className="w-10 text-center font-mono text-xs text-ink-muted">
             {zoom.toFixed(1)}x
           </span>
           <button
@@ -237,7 +243,7 @@ export function SetGraph() {
             onClick={zoomIn}
             disabled={zoom >= MAX_ZOOM}
             title="Zoom in"
-            className="rounded p-1.5 text-slate-400 transition-colors hover:text-slate-100 disabled:opacity-30"
+            className="rounded p-1.5 text-ink-muted transition-colors hover:text-ink disabled:opacity-30"
           >
             <ZoomIn className="size-3.5" />
           </button>
@@ -245,7 +251,7 @@ export function SetGraph() {
             type="button"
             onClick={resetZoom}
             title="Reset zoom"
-            className="rounded p-1.5 text-slate-400 transition-colors hover:text-slate-100"
+            className="rounded p-1.5 text-ink-muted transition-colors hover:text-ink"
           >
             <RotateCcw className="size-3.5" />
           </button>
@@ -309,7 +315,7 @@ export function SetGraph() {
 
               <Tooltip
                 content={SetTooltip}
-                cursor={{ stroke: '#475569', strokeDasharray: '3 3' }}
+                cursor={{ stroke: '#52525b', strokeDasharray: '3 3' }}
               />
 
               <Line
@@ -357,7 +363,7 @@ export function SetGraph() {
         </div>
 
         {points.length === 0 && (
-          <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-600">
+          <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-ink-muted">
             Add tracks from the catalog to plot the set trajectory.
           </p>
         )}

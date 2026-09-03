@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
-  ArrowDownAZ,
-  ArrowUpAZ,
+  ChevronDown,
+  ChevronUp,
   Disc3,
   Pause,
   Play,
@@ -25,7 +25,7 @@ import {
   trackTitle,
 } from '@/lib/setMath'
 import { useSetStore } from '@/store/useSetStore'
-import type { SortField, Track } from '@/types'
+import type { SortDirection, SortField, Track } from '@/types'
 
 const ROW_HEIGHT = 44
 const MAX_GENRE_TAGS = 16
@@ -33,16 +33,6 @@ const MAX_GENRE_TAGS = 16
 /** Shared grid template keeps the sticky header aligned with virtual rows. */
 const GRID_TEMPLATE =
   'grid-cols-[32px_minmax(0,3fr)_minmax(0,2fr)_minmax(0,1.4fr)_68px_60px_104px_92px_84px]'
-
-const SORT_OPTIONS: { value: SortField; label: string }[] = [
-  { value: 'title', label: 'Title' },
-  { value: 'artist', label: 'Artist' },
-  { value: 'genre', label: 'Genre' },
-  { value: 'bpm', label: 'BPM' },
-  { value: 'key', label: 'Key' },
-  { value: 'energy', label: 'Energy' },
-  { value: 'rating', label: 'Rating' },
-]
 
 /** Nulls always sink to the bottom regardless of sort direction. */
 function compareNumeric(a: number | null, b: number | null): number {
@@ -81,6 +71,47 @@ function compareTracks(a: Track, b: Track, field: SortField): number {
   }
 }
 
+function SortHeading({
+  field,
+  label,
+  active,
+  direction,
+  align = 'left',
+  onSort,
+}: {
+  field: SortField
+  label: string
+  active: boolean
+  direction: SortDirection
+  align?: 'left' | 'right'
+  onSort: (field: SortField) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      title={
+        active
+          ? `Sorted ${direction === 'asc' ? 'ascending' : 'descending'} — click to reverse`
+          : `Sort by ${label}`
+      }
+      className={cn(
+        'flex items-center gap-0.5 uppercase tracking-wider transition-colors',
+        align === 'right' && 'w-full justify-end',
+        active ? 'text-ink' : 'hover:text-ink',
+      )}
+    >
+      {label}
+      {active &&
+        (direction === 'asc' ? (
+          <ChevronUp className="size-3" />
+        ) : (
+          <ChevronDown className="size-3" />
+        ))}
+    </button>
+  )
+}
+
 function RatingStars({ rating }: { rating: number }) {
   return (
     <span className="flex items-center gap-0.5" title={`${rating} of 5`}>
@@ -91,7 +122,7 @@ function RatingStars({ rating }: { rating: number }) {
             'size-3',
             star <= rating
               ? 'fill-amber-400 text-amber-400'
-              : 'text-slate-700',
+              : 'text-ink-faint',
           )}
         />
       ))}
@@ -160,6 +191,14 @@ export function TrackLibrary() {
     overscan: 12,
   })
 
+  const handleSort = useCallback(
+    (field: SortField) => {
+      if (field === sortField) toggleSortDirection()
+      else setSortField(field)
+    },
+    [setSortField, sortField, toggleSortDirection],
+  )
+
   const handleAdd = useCallback(
     (track: Track) => {
       addTrackToSet(track)
@@ -168,70 +207,34 @@ export function TrackLibrary() {
   )
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-slate-950">
-      <header className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-        <div className="flex items-center gap-2 text-slate-300">
-          <Disc3 className="size-4 text-amber-400" />
+    <section className="flex min-h-0 flex-1 flex-col bg-canvas">
+      <header className="shrink-0 border-b border-line bg-panel">
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-4 py-2.5">
+        <div className="flex shrink-0 items-center gap-2 text-ink">
+          <Disc3 className="size-4 text-amber-600" />
           <h2 className="text-xs font-semibold uppercase tracking-wider">
             DJ Catalog
           </h2>
         </div>
-        <span className="font-mono text-xs text-slate-500">
+        <span className="shrink-0 font-mono text-xs text-ink-muted">
           {visibleTracks.length} / {catalog.length}
         </span>
 
-        <div className="relative ml-auto">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-500" />
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint" />
           <input
             type="search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Search title or artist…"
             className={cn(
-              'w-56 rounded-md border border-slate-800 bg-slate-900 py-1.5 pl-8 pr-3',
-              'text-xs text-slate-100 placeholder:text-slate-500',
-              'outline-none focus:border-cyan-500/60',
+              'w-full rounded-md border border-line bg-raised py-1.5 pl-8 pr-3',
+              'text-xs text-ink placeholder:text-ink-faint',
+              'outline-none focus:border-accent',
             )}
           />
         </div>
-
-        <label className="flex items-center gap-1.5 text-xs text-slate-500">
-          Select by
-          <select
-            value={sortField}
-            onChange={(event) =>
-              setSortField(event.target.value as SortField)
-            }
-            className={cn(
-              'rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5',
-              'text-xs text-slate-100 outline-none focus:border-cyan-500/60',
-            )}
-          >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <button
-          type="button"
-          onClick={toggleSortDirection}
-          title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-          className={cn(
-            'flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5',
-            'text-xs text-slate-300 transition-colors hover:border-slate-600',
-          )}
-        >
-          {sortDirection === 'asc' ? (
-            <ArrowUpAZ className="size-3.5" />
-          ) : (
-            <ArrowDownAZ className="size-3.5" />
-          )}
-          {sortDirection === 'asc' ? 'Asc' : 'Desc'}
-        </button>
-      </header>
+        </div>
 
       {genreOptions.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2.5">
@@ -245,8 +248,8 @@ export function TrackLibrary() {
                 className={cn(
                   'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
                   isActive
-                    ? 'border-cyan-400/60 bg-cyan-400/15 text-cyan-200'
-                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-600 hover:text-slate-200',
+                    ? 'border-theme-line bg-theme text-ink'
+                    : 'border-line bg-raised text-ink-muted hover:text-ink',
                 )}
               >
                 {genre}
@@ -257,7 +260,7 @@ export function TrackLibrary() {
             <button
               type="button"
               onClick={clearGenreFilters}
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-slate-500 hover:text-rose-400"
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-ink-muted hover:text-rose-600"
             >
               <X className="size-3" />
               Clear
@@ -265,37 +268,83 @@ export function TrackLibrary() {
           )}
         </div>
       )}
+      </header>
 
-      <div className="mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-800">
+      <div className="mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-panel">
         <div
           className={cn(
-            'grid shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-2',
-            'text-xs font-medium uppercase tracking-wider text-slate-500',
+            'grid shrink-0 items-center gap-2 border-b border-line bg-raised px-3 py-2',
+            'text-xs font-medium uppercase tracking-wider text-ink-muted',
             GRID_TEMPLATE,
           )}
         >
           <span />
-          <span>Title</span>
-          <span>Artist</span>
-          <span>Genre</span>
-          <span className="text-right">BPM</span>
-          <span className="text-right">Key</span>
-          <span className="text-right">Energy</span>
-          <span>Rating</span>
+          <SortHeading
+            field="title"
+            label="Title"
+            active={sortField === 'title'}
+            direction={sortDirection}
+            onSort={handleSort}
+          />
+          <SortHeading
+            field="artist"
+            label="Artist"
+            active={sortField === 'artist'}
+            direction={sortDirection}
+            onSort={handleSort}
+          />
+          <SortHeading
+            field="genre"
+            label="Genre"
+            active={sortField === 'genre'}
+            direction={sortDirection}
+            onSort={handleSort}
+          />
+          <SortHeading
+            field="bpm"
+            label="BPM"
+            active={sortField === 'bpm'}
+            direction={sortDirection}
+            align="right"
+            onSort={handleSort}
+          />
+          <SortHeading
+            field="key"
+            label="Key"
+            active={sortField === 'key'}
+            direction={sortDirection}
+            align="right"
+            onSort={handleSort}
+          />
+          <SortHeading
+            field="energy"
+            label="Energy"
+            active={sortField === 'energy'}
+            direction={sortDirection}
+            align="right"
+            onSort={handleSort}
+          />
+          <SortHeading
+            field="rating"
+            label="Rating"
+            active={sortField === 'rating'}
+            direction={sortDirection}
+            onSort={handleSort}
+          />
           <span className="text-right">Add</span>
         </div>
 
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
           {catalogStatus === 'loading' && (
-            <p className="px-3 py-6 text-sm text-slate-500">Loading catalog…</p>
+            <p className="px-3 py-6 text-sm text-ink-muted">Loading catalog…</p>
           )}
           {catalogStatus === 'error' && (
-            <p className="px-3 py-6 text-sm text-rose-400">
+            <p className="px-3 py-6 text-sm text-rose-500">
               {catalogError ?? 'Failed to load the catalog.'}
             </p>
           )}
           {catalogStatus === 'ready' && visibleTracks.length === 0 && (
-            <p className="px-3 py-6 text-sm text-slate-500">
+            <p className="px-3 py-6 text-sm text-ink-muted">
               No tracks match the current filters.
             </p>
           )}
@@ -325,11 +374,11 @@ export function TrackLibrary() {
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={cn(
-                    'grid cursor-default items-center gap-2 border-b border-slate-800/60 px-3',
+                    'grid cursor-default items-center gap-2 border-b border-line/50 px-3',
                     GRID_TEMPLATE,
                     isSelected
-                      ? 'bg-cyan-400/10'
-                      : 'odd:bg-slate-900/30 hover:bg-slate-800/60',
+                      ? 'bg-theme'
+                      : 'odd:bg-raised/70 hover:bg-raised',
                   )}
                 >
                   <button
@@ -342,8 +391,8 @@ export function TrackLibrary() {
                     className={cn(
                       'flex size-6 items-center justify-center rounded-full transition-colors',
                       isPlayingRow
-                        ? 'bg-cyan-400 text-slate-950'
-                        : 'text-slate-500 hover:bg-slate-700 hover:text-cyan-300',
+                        ? 'bg-accent text-white'
+                        : 'text-ink-muted hover:bg-theme hover:text-accent',
                     )}
                   >
                     {isPlayingRow ? (
@@ -352,32 +401,32 @@ export function TrackLibrary() {
                       <Play className="size-3 fill-current" />
                     )}
                   </button>
-                  <span className="truncate text-sm text-slate-100">
+                  <span className="truncate text-sm text-ink">
                     {trackTitle(track)}
-                    <span className="ml-2 font-mono text-xs text-slate-600">
+                    <span className="ml-2 font-mono text-xs text-ink-faint">
                       {formatDuration(trackDuration(track))}
                     </span>
                   </span>
-                  <span className="truncate text-sm text-slate-400">
+                  <span className="truncate text-sm text-ink-muted">
                     {trackArtist(track)}
                   </span>
-                  <span className="truncate text-xs text-slate-500">
+                  <span className="truncate text-xs text-ink-faint">
                     {trackGenre(track) ?? '—'}
                   </span>
-                  <span className="text-right font-mono text-xs text-cyan-300">
+                  <span className="text-right font-mono text-xs text-sky-600">
                     {bpm === null ? '—' : bpm.toFixed(1)}
                   </span>
-                  <span className="text-right font-mono text-xs text-amber-300">
+                  <span className="text-right font-mono text-xs text-amber-600">
                     {trackKey(track) ?? '—'}
                   </span>
                   <span className="flex items-center justify-end gap-1.5">
-                    <span className="h-1 w-10 overflow-hidden rounded-full bg-slate-800">
+                    <span className="h-1 w-10 overflow-hidden rounded-full bg-canvas">
                       <span
-                        className="block h-full rounded-full bg-fuchsia-400"
+                        className="block h-full rounded-full bg-violet-400"
                         style={{ width: `${(energy ?? 0) * 100}%` }}
                       />
                     </span>
-                    <span className="font-mono text-xs text-fuchsia-300">
+                    <span className="font-mono text-xs text-violet-600">
                       {energy === null ? '—' : energy.toFixed(2)}
                     </span>
                   </span>
@@ -391,9 +440,9 @@ export function TrackLibrary() {
                         handleAdd(track)
                       }}
                       className={cn(
-                        'flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1',
-                        'text-xs font-medium text-slate-300 transition-colors',
-                        'hover:border-cyan-400/60 hover:bg-cyan-400/15 hover:text-cyan-200',
+                        'flex items-center gap-1 rounded-md border border-line bg-raised px-2 py-1',
+                        'text-xs font-medium text-ink-muted transition-colors',
+                        'hover:border-accent hover:bg-theme hover:text-ink',
                       )}
                     >
                       <Plus className="size-3" />

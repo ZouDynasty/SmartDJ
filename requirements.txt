@@ -4,6 +4,10 @@ mutagen>=1.47.0
 
 # Audio analysis (BPM, key, energy, Discogs-EffNet genre)
 numpy>=1.24.0
+scipy>=1.11.0
+librosa>=0.10.0
+soundfile>=0.12.0
+tqdm>=4.66.0
 essentia-tensorflow==2.1b6.dev1389
 certifi>=2024.0.0
 

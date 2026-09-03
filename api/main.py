@@ -18,6 +18,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from api.artwork import extract_artwork
 from api.library import (
     DEFAULT_DB_PATH,
     connect,
@@ -136,6 +137,28 @@ def list_playlists(
     connection: sqlite3.Connection = Depends(get_connection),
 ) -> list[dict[str, Any]]:
     return fetch_playlists(connection)
+
+
+@app.get("/api/tracks/{track_id}/artwork")
+def get_track_artwork(
+    track_id: int,
+    connection: sqlite3.Connection = Depends(get_connection),
+) -> Response:
+    """Album cover embedded in the track's own file."""
+    path = fetch_audio_path(connection, track_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"Unknown track_id {track_id}")
+
+    artwork = extract_artwork(path)
+    if artwork is None:
+        raise HTTPException(status_code=404, detail="No artwork for this track")
+
+    data, media_type = artwork
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 def _parse_range(range_header: str, file_size: int) -> tuple[int, int]:
