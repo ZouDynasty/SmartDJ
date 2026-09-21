@@ -3,24 +3,24 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Tight grey ramp for surfaces, plus a dusty light red used as the
- * chrome / set / playback hue so those regions read apart from the catalog.
+ * White catalog surfaces, cool grey structure, black type, and a steel-blue
+ * chrome / set / playback hue so those regions read apart from the library.
  */
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --color-canvas: #b6b6bd;
-  --color-panel: #bebec5;
-  --color-raised: #c6c6cd;
-  --color-line: #aaaab1;
-  --color-seam: #7a7a82;
-  --color-ink: #3f3f46;
-  --color-ink-muted: #52525b;
-  --color-ink-faint: #63636c;
-  --color-theme: #e8c4c4;
-  --color-theme-raised: #f0d4d4;
-  --color-theme-line: #d4a3a3;
-  --color-accent: #d45c5c;
-  --color-accent-hover: #c44d4d;
+  --color-canvas: #e8ecf1;
+  --color-panel: #ffffff;
+  --color-raised: #f4f6f8;
+  --color-line: #c8d0d8;
+  --color-seam: #8a94a0;
+  --color-ink: #0a0c10;
+  --color-ink-muted: #3d4654;
+  --color-ink-faint: #6b7380;
+  --color-theme: #9bb4d4;
+  --color-theme-raised: #b8cce4;
+  --color-theme-line: #7d96b4;
+  --color-accent: #1d4ed8;
+  --color-accent-hover: #1e3a8a;
 }
 
 html,
@@ -38,4 +38,48 @@ body {
 
 #root {
   min-height: 100svh;
+}
+
+body.is-panel-resizing,
+body.is-panel-resizing * {
+  cursor: inherit !important;
+  user-select: none !important;
+}
+
+/* HTML5 drag image: a compact dashed stand-in for the catalog row. */
+.track-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translate(-100%, -100%);
+  box-sizing: border-box;
+  width: 200px;
+  padding: 0.5rem 0.7rem;
+  overflow: hidden;
+  pointer-events: none;
+  border: 1.5px dashed var(--color-accent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--color-panel) 82%, transparent);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+.track-drag-ghost-title,
+.track-drag-ghost-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-drag-ghost-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.track-drag-ghost-artist {
+  margin-top: 0.1rem;
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--color-ink-muted);
 }

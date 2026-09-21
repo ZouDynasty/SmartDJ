@@ -23,14 +23,11 @@ import type { SetPoint } from '@/lib/setMath'
 import { MAX_ZOOM, MIN_ZOOM, useSetStore } from '@/store/useSetStore'
 import type { MetricView } from '@/types'
 
-/**
- * Mid-tone accents rather than true pastels: the surfaces are pastel, so a
- * 2px line needs this much weight to stay legible against them.
- */
+/** BPM blue, energy black, key grey — readable 2px lines on the white plane. */
 const SERIES = {
-  bpm: { label: 'BPM', color: '#0ea5e9' },
-  energy: { label: 'Energy', color: '#8b5cf6' },
-  key: { label: 'Key', color: '#f59e0b' },
+  bpm: { label: 'BPM', color: '#1d4ed8' },
+  energy: { label: 'Energy', color: '#0f172a' },
+  key: { label: 'Key', color: '#64748b' },
 } as const
 
 const VIEW_OPTIONS: { value: MetricView; label: string }[] = [
@@ -40,11 +37,11 @@ const VIEW_OPTIONS: { value: MetricView; label: string }[] = [
   { value: 'key', label: 'Key Only' },
 ]
 
-const GRID_COLOR = '#aaaab1'
-const AXIS_COLOR = '#aaaab1'
-const TICK_STYLE = { fill: '#3f3f46', fontSize: 11 } as const
+const GRID_COLOR = '#c8d0d8'
+const AXIS_COLOR = '#c8d0d8'
+const TICK_STYLE = { fill: '#0a0c10', fontSize: 11 } as const
 /** Unhighlighted dots sit on raised, one step above the canvas. */
-const DOT_FILL = '#c6c6cd'
+const DOT_FILL = '#f4f6f8'
 
 /** Camelot axis renders every one of the 24 harmonic ticks. */
 const KEY_TICKS = CAMELOT_KEYS.map((_, index) => index)
@@ -98,7 +95,7 @@ function SetTooltip({ active, payload }: TooltipContentProps) {
   if (!point?.instanceId) return null
 
   return (
-    <div className="min-w-52 rounded-lg border border-line bg-panel p-3 shadow-lg shadow-zinc-500/20">
+    <div className="min-w-52 rounded-lg border border-line bg-panel p-3 shadow-lg shadow-slate-900/15">
       <p className="flex items-baseline gap-2">
         <span className="font-mono text-xs text-ink-faint">
           {String(point.index + 1).padStart(2, '0')}
@@ -133,7 +130,7 @@ function SetTooltip({ active, payload }: TooltipContentProps) {
   )
 }
 
-export function SetGraph() {
+export function SetGraph({ height }: { height: number }) {
   const activeQueue = useSetStore((state) => state.activeQueue)
   const zoom = useSetStore((state) => state.zoom)
   const zoomIn = useSetStore((state) => state.zoomIn)
@@ -194,7 +191,10 @@ export function SetGraph() {
   )
 
   return (
-    <section className="flex h-[320px] shrink-0 flex-col bg-canvas">
+    <section
+      className="flex shrink-0 flex-col bg-canvas"
+      style={{ height }}
+    >
       <header className="flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2.5">
         <div className="flex items-center gap-2 text-ink">
           <Activity className="size-4 text-accent" />
@@ -315,7 +315,7 @@ export function SetGraph() {
 
               <Tooltip
                 content={SetTooltip}
-                cursor={{ stroke: '#52525b', strokeDasharray: '3 3' }}
+                cursor={{ stroke: '#3d4654', strokeDasharray: '3 3' }}
               />
 
               <Line

@@ -95,6 +95,29 @@ export function camelotRelation(
   return { label: `${steps} steps + mode flip`, compatible: false }
 }
 
+/** Mix window used by the catalog filter and the candidate retriever. */
+export const COMPATIBLE_BPM_TOLERANCE = 0.1
+
+/** True when BPM is within 10%, including half-time and double-time. */
+export function bpmCompatible(
+  fromBpm: number | null,
+  toBpm: number | null,
+  tolerance: number = COMPATIBLE_BPM_TOLERANCE,
+): boolean {
+  if (fromBpm === null || toBpm === null || fromBpm <= 0) return false
+  const direct = Math.abs(fromBpm - toBpm) / fromBpm
+  const doubleTime = Math.abs(fromBpm - 2 * toBpm) / fromBpm
+  const halfTime = Math.abs(fromBpm - 0.5 * toBpm) / fromBpm
+  return Math.min(direct, doubleTime, halfTime) <= tolerance
+}
+
+/** Harmonic + tempo legal: same/relative/adjacent Camelot and a mixable BPM. */
+export function isMixCompatible(from: Track, to: Track): boolean {
+  const relation = camelotRelation(trackKey(from), trackKey(to))
+  if (relation === null || !relation.compatible) return false
+  return bpmCompatible(trackBpm(from), trackBpm(to))
+}
+
 export function trackTitle(track: Track): string {
   return track.title?.trim() || 'Untitled'
 }

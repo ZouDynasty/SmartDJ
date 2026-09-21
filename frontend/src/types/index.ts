@@ -76,6 +76,14 @@ export interface SetItem {
   cue_points: CuePoint[]
 }
 
+/** Named set persisted in the browser. Tracks are stored as Rekordbox IDs. */
+export interface SavedSet {
+  id: string
+  name: string
+  track_ids: number[]
+  saved_at: string
+}
+
 export interface Recommendation {
   track: Track
   score: number | null

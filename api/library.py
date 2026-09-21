@@ -7,6 +7,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from api.paths import resolve_audio_path
+
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "library.sqlite"
 
 #: Scalar columns returned by the catalog list endpoint. ``tempo_markers_json``
@@ -157,12 +159,12 @@ def fetch_audio_path(connection: sqlite3.Connection, track_id: int) -> Path | No
     no traversal surface: callers can only reach files Rekordbox already indexed.
     """
     row = connection.execute(
-        "SELECT file_path FROM tracks WHERE track_id = ?",
+        "SELECT file_path, title FROM tracks WHERE track_id = ?",
         (track_id,),
     ).fetchone()
     if row is None or not row["file_path"]:
         return None
-    return Path(row["file_path"])
+    return resolve_audio_path(row["file_path"], title=row["title"])
 
 
 def fetch_playlists(connection: sqlite3.Connection) -> list[dict[str, Any]]:

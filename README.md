@@ -32,18 +32,22 @@ A library database should already exist at `data/library.sqlite`. If it is missi
 
 ## Refresh the library
 
-Rekordbox XML is the source of truth:
+Re-export from Rekordbox and ingest again. The second (and later) run is incremental: unchanged tracks keep their stored energy / BPM / key / genre, playlists and Rekordbox fields are updated in place, and audio analysis runs only for new files or files that changed on disk.
 
 ```bash
 .venv/bin/python audio_extraction/ingest_rekordbox.py /path/to/rekordbox.xml
 ```
 
-- `--skip-audio` — write metadata only (no energy calculation or Essentia fallback)
-- `--dry-run` — parse and print counts without writing to SQLite
+- `--dry-run` — show how many tracks would be skipped / updated / analyzed
+- `--skip-audio` — write XML metadata only (no energy or Essentia)
+- `--force-audio` — re-analyze every track even if it is already stored
 
 Optional follow-ups:
 
 ```bash
+# Point rows at converted siblings (FLAC → MP3 in the same folder)
+.venv/bin/python audio_extraction/relink_audio.py --apply
+
 # Folder-scan fallback if you are not using Rekordbox
 .venv/bin/python audio_extraction/extract_tags.py /path/to/music
 

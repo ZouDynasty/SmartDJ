@@ -1,22 +1,44 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Headphones, TriangleAlert } from 'lucide-react'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { NowNext } from '@/components/NowNext'
+import { ResizeHandle } from '@/components/ResizeHandle'
 import { SetBuilder } from '@/components/SetBuilder'
 import { SetGraph } from '@/components/SetGraph'
 import { TrackLibrary } from '@/components/TrackLibrary'
 import { getTracks } from '@/lib/api'
+import {
+  clampGraphHeight,
+  clampSidebarWidth,
+  loadPanelLayout,
+  persistPanelLayout,
+} from '@/lib/panelLayout'
 import { formatDuration, totalSetDuration } from '@/lib/setMath'
 import { useSetStore } from '@/store/useSetStore'
 
 function App() {
   const activeQueue = useSetStore((state) => state.activeQueue)
+  const savedSets = useSetStore((state) => state.savedSets)
+  const loadedSetId = useSetStore((state) => state.loadedSetId)
   const catalog = useSetStore((state) => state.catalog)
   const catalogStatus = useSetStore((state) => state.catalogStatus)
   const catalogError = useSetStore((state) => state.catalogError)
   const setCatalog = useSetStore((state) => state.setCatalog)
   const setCatalogStatus = useSetStore((state) => state.setCatalogStatus)
   const setCatalogError = useSetStore((state) => state.setCatalogError)
+
+  const columnRef = useRef<HTMLDivElement>(null)
+  const dragOrigin = useRef(loadPanelLayout())
+  const [sidebarWidth, setSidebarWidth] = useState(
+    () => loadPanelLayout().sidebarWidth,
+  )
+  const [graphHeight, setGraphHeight] = useState(
+    () => loadPanelLayout().graphHeight,
+  )
+  const sidebarWidthRef = useRef(sidebarWidth)
+  const graphHeightRef = useRef(graphHeight)
+  sidebarWidthRef.current = sidebarWidth
+  graphHeightRef.current = graphHeight
 
   useEffect(() => {
     const controller = new AbortController()
@@ -39,6 +61,32 @@ function App() {
     return () => controller.abort()
   }, [setCatalog, setCatalogError, setCatalogStatus])
 
+  useEffect(() => {
+    const column = columnRef.current
+    if (!column) return
+
+    const apply = () => {
+      setGraphHeight((height) => clampGraphHeight(height, column))
+      setSidebarWidth((width) => clampSidebarWidth(width))
+    }
+
+    apply()
+    const observer = new ResizeObserver(apply)
+    observer.observe(column)
+    window.addEventListener('resize', apply)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', apply)
+    }
+  }, [])
+
+  const persistSizes = useCallback(() => {
+    persistPanelLayout({
+      sidebarWidth: sidebarWidthRef.current,
+      graphHeight: graphHeightRef.current,
+    })
+  }, [])
+
   return (
     <div className="flex h-svh min-h-0 flex-col gap-px overflow-hidden bg-seam font-sans text-ink">
       <header className="flex shrink-0 items-center gap-3 bg-theme px-4 py-2.5">
@@ -48,6 +96,9 @@ function App() {
           <span className="ml-2 font-normal text-ink-muted">Set Builder</span>
         </h1>
         <span className="rounded-full border border-theme-line bg-theme-raised px-2.5 py-0.5 font-mono text-xs text-ink-muted">
+          {savedSets.find((entry) => entry.id === loadedSetId)?.name ??
+            'Untitled set'}
+          {' · '}
           {activeQueue.length} in set ·{' '}
           {formatDuration(totalSetDuration(activeQueue))}
         </span>
@@ -67,13 +118,60 @@ function App() {
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-px">
-        <div className="flex min-w-0 flex-1 flex-col gap-px">
-          <SetGraph />
+      <div className="flex min-h-0 flex-1">
+        <div
+          ref={columnRef}
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+        >
+          <SetGraph height={graphHeight} />
+          <ResizeHandle
+            axis="y"
+            label="Resize set trajectory"
+            onDragStart={() => {
+              dragOrigin.current.graphHeight = graphHeight
+            }}
+            onDrag={(delta) => {
+              setGraphHeight(
+                clampGraphHeight(
+                  dragOrigin.current.graphHeight + delta,
+                  columnRef.current,
+                ),
+              )
+            }}
+            onDragEnd={persistSizes}
+          />
           <NowNext />
+          <ResizeHandle
+            axis="y"
+            label="Resize DJ catalog"
+            onDragStart={() => {
+              dragOrigin.current.graphHeight = graphHeight
+            }}
+            onDrag={(delta) => {
+              setGraphHeight(
+                clampGraphHeight(
+                  dragOrigin.current.graphHeight + delta,
+                  columnRef.current,
+                ),
+              )
+            }}
+            onDragEnd={persistSizes}
+          />
           <TrackLibrary />
         </div>
-        <SetBuilder />
+        <ResizeHandle
+          axis="x"
+          invert
+          label="Resize set queue"
+          onDragStart={() => {
+            dragOrigin.current.sidebarWidth = sidebarWidth
+          }}
+          onDrag={(delta) => {
+            setSidebarWidth(clampSidebarWidth(dragOrigin.current.sidebarWidth + delta))
+          }}
+          onDragEnd={persistSizes}
+        />
+        <SetBuilder width={sidebarWidth} />
       </div>
 
       <AudioPlayer />

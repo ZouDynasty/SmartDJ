@@ -1,6 +1,8 @@
 import { create } from 'zustand'
+import { loadSavedSets, persistSavedSets } from '@/lib/savedSets'
 import type {
   MetricView,
+  SavedSet,
   SetItem,
   SortDirection,
   SortField,
@@ -19,6 +21,32 @@ function createInstanceId(trackId: number): string {
   return `${trackId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function createSetItem(track: Track): SetItem {
+  return {
+    instance_id: createInstanceId(track.track_id),
+    track,
+    cue_points: track.cue_points ?? [],
+  }
+}
+
+function queueFromSaved(trackIds: number[], catalog: Track[]): SetItem[] {
+  const catalogById = new Map(catalog.map((track) => [track.track_id, track]))
+  return trackIds.flatMap((trackId) => {
+    const track = catalogById.get(trackId)
+    return track ? [createSetItem(track)] : []
+  })
+}
+
+function playingQueueIndex(state: {
+  activeQueue: SetItem[]
+  playingTrack: Track | null
+}): number {
+  if (!state.playingTrack) return -1
+  return state.activeQueue.findIndex(
+    (item) => item.track.track_id === state.playingTrack?.track_id,
+  )
+}
+
 function clampZoom(zoom: number): number {
   return Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM)
 }
@@ -34,6 +62,9 @@ interface SetStore {
 
   /** Ordered live set. */
   activeQueue: SetItem[]
+  savedSets: SavedSet[]
+  /** Set last saved or loaded; null while the queue is an unnamed draft. */
+  loadedSetId: string | null
   selectedTrack: Track | null
   /** Shared hover target for graph <-> queue cross-highlighting. */
   highlightedInstanceId: string | null
@@ -59,9 +90,17 @@ interface SetStore {
 
   setActiveQueue: (queue: SetItem[]) => void
   addTrackToSet: (track: Track) => void
+  /** Insert at the current play position and start playback. */
+  playNow: (track: Track) => void
+  /** Insert immediately after the current track (or at the front of the set). */
+  queueNext: (track: Track) => void
   removeSetItem: (instanceId: string) => void
   moveSetItem: (fromIndex: number, toIndex: number) => void
   clearSet: () => void
+  /** Persist the current queue under ``name``. Same name overwrites. */
+  saveSet: (name: string) => void
+  loadSavedSet: (id: string) => void
+  deleteSavedSet: (id: string) => void
 
   setSelectedTrack: (track: Track | null) => void
   setHighlight: (instanceId: string | null, source?: HighlightSource) => void
@@ -91,6 +130,8 @@ export const useSetStore = create<SetStore>()((set) => ({
   catalogError: null,
 
   activeQueue: [],
+  savedSets: loadSavedSets(),
+  loadedSetId: null,
   selectedTrack: null,
   highlightedInstanceId: null,
   highlightSource: null,
@@ -106,7 +147,18 @@ export const useSetStore = create<SetStore>()((set) => ({
   sortDirection: 'asc',
   genreFilters: [],
 
-  setCatalog: (tracks) => set({ catalog: tracks }),
+  setCatalog: (tracks) =>
+    set((state) => {
+      const saved = state.loadedSetId
+        ? state.savedSets.find((entry) => entry.id === state.loadedSetId)
+        : null
+      return {
+        catalog: tracks,
+        activeQueue: saved
+          ? queueFromSaved(saved.track_ids, tracks)
+          : state.activeQueue,
+      }
+    }),
   setCatalogStatus: (status) => set({ catalogStatus: status }),
   setCatalogError: (message) => set({ catalogError: message }),
 
@@ -114,15 +166,30 @@ export const useSetStore = create<SetStore>()((set) => ({
 
   addTrackToSet: (track) =>
     set((state) => ({
-      activeQueue: [
-        ...state.activeQueue,
-        {
-          instance_id: createInstanceId(track.track_id),
-          track,
-          cue_points: track.cue_points ?? [],
-        },
-      ],
+      activeQueue: [...state.activeQueue, createSetItem(track)],
     })),
+
+  playNow: (track) =>
+    set((state) => {
+      const playingIndex = playingQueueIndex(state)
+      const insertAt = playingIndex >= 0 ? playingIndex : 0
+      const next = [...state.activeQueue]
+      next.splice(insertAt, 0, createSetItem(track))
+      return {
+        activeQueue: next,
+        playingTrack: track,
+        isPlaying: true,
+      }
+    }),
+
+  queueNext: (track) =>
+    set((state) => {
+      const playingIndex = playingQueueIndex(state)
+      const insertAt = playingIndex >= 0 ? playingIndex + 1 : 0
+      const next = [...state.activeQueue]
+      next.splice(insertAt, 0, createSetItem(track))
+      return { activeQueue: next }
+    }),
 
   removeSetItem: (instanceId) =>
     set((state) => ({
@@ -156,7 +223,57 @@ export const useSetStore = create<SetStore>()((set) => ({
     }),
 
   clearSet: () =>
-    set({ activeQueue: [], highlightedInstanceId: null, highlightSource: null }),
+    set({
+      activeQueue: [],
+      loadedSetId: null,
+      highlightedInstanceId: null,
+      highlightSource: null,
+    }),
+
+  saveSet: (name) =>
+    set((state) => {
+      const trimmed = name.trim()
+      if (!trimmed || state.activeQueue.length === 0) return {}
+      const trackIds = state.activeQueue.map((item) => item.track.track_id)
+      const existing = state.savedSets.find(
+        (entry) => entry.name.toLowerCase() === trimmed.toLowerCase(),
+      )
+      const record: SavedSet = {
+        id: existing?.id ?? createInstanceId(0),
+        name: trimmed,
+        track_ids: trackIds,
+        saved_at: new Date().toISOString(),
+      }
+      const savedSets = existing
+        ? state.savedSets.map((entry) =>
+            entry.id === existing.id ? record : entry,
+          )
+        : [record, ...state.savedSets]
+      persistSavedSets(savedSets)
+      return { savedSets, loadedSetId: record.id }
+    }),
+
+  loadSavedSet: (id) =>
+    set((state) => {
+      const saved = state.savedSets.find((entry) => entry.id === id)
+      if (!saved) return {}
+      return {
+        activeQueue: queueFromSaved(saved.track_ids, state.catalog),
+        loadedSetId: id,
+        highlightedInstanceId: null,
+        highlightSource: null,
+      }
+    }),
+
+  deleteSavedSet: (id) =>
+    set((state) => {
+      const savedSets = state.savedSets.filter((entry) => entry.id !== id)
+      persistSavedSets(savedSets)
+      return {
+        savedSets,
+        loadedSetId: state.loadedSetId === id ? null : state.loadedSetId,
+      }
+    }),
 
   setSelectedTrack: (track) => set({ selectedTrack: track }),
   setHighlight: (instanceId, source = null) =>

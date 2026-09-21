@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   KeyboardSensor,
@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ListMusic, Pause, Play, Trash2, X } from 'lucide-react'
+import { FolderOpen, ListMusic, Pause, Play, Save, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buildSetPoints, formatDuration } from '@/lib/setMath'
 import type { SetPoint } from '@/lib/setMath'
@@ -30,13 +30,13 @@ interface SetCardProps {
   onPlay: (instanceId: string) => void
 }
 
-/** Minor (A) keys read cool, major (B) keys read warm — quick harmonic scan. */
+/** Minor (A) keys read blue, major (B) keys read grey — quick harmonic scan. */
 function keyBadgeClass(keyLabel: string): string {
   if (keyLabel.endsWith('A')) {
-    return 'bg-sky-100 text-sky-700'
+    return 'bg-blue-100 text-blue-800'
   }
   if (keyLabel.endsWith('B')) {
-    return 'bg-amber-100 text-amber-700'
+    return 'bg-slate-200 text-slate-800'
   }
   return 'bg-raised text-ink-muted'
 }
@@ -69,10 +69,10 @@ function SetCard({
         'group relative flex w-full cursor-grab items-center gap-2 rounded-md border px-2 py-1.5',
         'bg-theme-raised transition-colors select-none',
         isHighlighted
-          ? 'border-accent bg-theme-raised shadow-[0_0_0_1px_rgba(212,92,92,0.35)]'
+          ? 'border-accent bg-theme-raised shadow-[0_0_0_1px_rgba(29,78,216,0.35)]'
           : 'border-theme-line hover:border-accent',
         isDragging &&
-          'z-10 cursor-grabbing opacity-90 shadow-lg shadow-zinc-500/30',
+          'z-10 cursor-grabbing opacity-90 shadow-lg shadow-slate-900/20',
       )}
       {...attributes}
       {...listeners}
@@ -119,7 +119,7 @@ function SetCard({
 
       <div className="flex shrink-0 flex-col items-end gap-0.5 font-mono text-[11px] leading-tight">
         <span className="flex items-center gap-1">
-          <span className="text-sky-600">
+          <span className="text-blue-700">
             {point.bpm === null ? '—' : point.bpm.toFixed(0)}
           </span>
           <span
@@ -132,7 +132,7 @@ function SetCard({
           </span>
         </span>
         <span className="flex items-center gap-1">
-          <span className="text-violet-600">
+          <span className="text-ink">
             {point.energyRaw === null ? '—' : point.energyRaw.toFixed(1)}
           </span>
           <span className="text-ink-faint">
@@ -151,7 +151,7 @@ function SetCard({
         }}
         className={cn(
           'shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-all',
-          'group-hover:opacity-100 hover:bg-rose-100 hover:text-rose-500',
+          'group-hover:opacity-100 hover:bg-slate-200 hover:text-ink',
         )}
       >
         <X className="size-3" />
@@ -160,11 +160,16 @@ function SetCard({
   )
 }
 
-export function SetBuilder() {
+export function SetBuilder({ width }: { width: number }) {
   const activeQueue = useSetStore((state) => state.activeQueue)
+  const savedSets = useSetStore((state) => state.savedSets)
+  const loadedSetId = useSetStore((state) => state.loadedSetId)
   const moveSetItem = useSetStore((state) => state.moveSetItem)
   const removeSetItem = useSetStore((state) => state.removeSetItem)
   const clearSet = useSetStore((state) => state.clearSet)
+  const saveSet = useSetStore((state) => state.saveSet)
+  const loadSavedSet = useSetStore((state) => state.loadSavedSet)
+  const deleteSavedSet = useSetStore((state) => state.deleteSavedSet)
   const highlightedInstanceId = useSetStore(
     (state) => state.highlightedInstanceId,
   )
@@ -174,7 +179,15 @@ export function SetBuilder() {
   const playingTrack = useSetStore((state) => state.playingTrack)
   const isPlaying = useSetStore((state) => state.isPlaying)
 
+  const [setName, setSetName] = useState('')
+  const [showSaved, setShowSaved] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
+  const loadedSet = savedSets.find((entry) => entry.id === loadedSetId) ?? null
+
+  useEffect(() => {
+    if (loadedSet) setSetName(loadedSet.name)
+  }, [loadedSet])
   const points = useMemo(() => buildSetPoints(activeQueue), [activeQueue])
   const ids = useMemo(() => points.map((point) => point.instanceId), [points])
 
@@ -221,29 +234,91 @@ export function SetBuilder() {
     [activeQueue, playTrack],
   )
 
+  const handleSave = useCallback(() => {
+    saveSet(setName)
+  }, [saveSet, setName])
+
+  const canSave = activeQueue.length > 0 && setName.trim().length > 0
+
   return (
-    <section className="flex w-80 shrink-0 flex-col bg-theme">
-      <header className="flex shrink-0 flex-col gap-1.5 border-b border-theme-line bg-theme-raised px-3 py-2.5">
+    <section
+      className="flex min-w-0 shrink-0 flex-col bg-theme"
+      style={{ width }}
+    >
+      <header className="flex shrink-0 flex-col gap-2 border-b border-theme-line bg-theme-raised px-3 py-2.5">
         <div className="flex items-center gap-2">
           <ListMusic className="size-4 shrink-0 text-accent" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink">
-            Active Set Queue
+          <h2 className="min-w-0 truncate text-xs font-semibold uppercase tracking-wider text-ink">
+            {loadedSet?.name ?? 'Active Set Queue'}
           </h2>
           <span className="ml-auto font-mono text-xs text-ink-muted">
             {activeQueue.length}
           </span>
         </div>
+        <form
+          className="flex items-center gap-1.5"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (canSave) handleSave()
+          }}
+        >
+          <input
+            type="text"
+            value={setName}
+            onChange={(event) => setSetName(event.target.value)}
+            placeholder="Name this set…"
+            className={cn(
+              'min-w-0 flex-1 rounded-md border border-theme-line bg-theme px-2 py-1',
+              'text-xs text-ink placeholder:text-ink-faint',
+              'outline-none focus:border-accent',
+            )}
+          />
+          <button
+            type="submit"
+            disabled={!canSave}
+            className={cn(
+              'flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold',
+              canSave
+                ? 'border-accent bg-accent text-white hover:bg-accent-hover'
+                : 'cursor-not-allowed border-theme-line text-ink-faint',
+            )}
+          >
+            <Save className="size-3" />
+            Save
+          </button>
+        </form>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setShowSaved((open) => !open)
+              setPendingDeleteId(null)
+            }}
+            className={cn(
+              'flex items-center gap-1 rounded-md border border-theme-line px-2 py-0.5',
+              'text-xs text-ink-muted transition-colors hover:text-ink',
+              showSaved && 'border-accent text-ink',
+            )}
+          >
+            <FolderOpen className="size-3" />
+            Saved
+            {savedSets.length > 0 && (
+              <span className="font-mono text-ink-faint">{savedSets.length}</span>
+            )}
+          </button>
           <span className="font-mono text-xs text-ink-muted">
             drag to reorder
           </span>
           {activeQueue.length > 0 && (
             <button
               type="button"
-              onClick={clearSet}
+              onClick={() => {
+                clearSet()
+                setSetName('')
+              }}
               className={cn(
                 'ml-auto flex items-center gap-1.5 rounded-md border border-theme-line px-2 py-0.5',
-                'text-xs text-ink-muted transition-colors hover:border-rose-400 hover:text-rose-600',
+                'text-xs text-ink-muted transition-colors hover:border-ink hover:text-ink',
               )}
             >
               <Trash2 className="size-3" />
@@ -251,6 +326,88 @@ export function SetBuilder() {
             </button>
           )}
         </div>
+        {showSaved && (
+          <ul className="max-h-40 overflow-y-auto rounded-md border border-theme-line bg-theme">
+            {savedSets.length === 0 ? (
+              <li className="px-2 py-2 text-xs text-ink-muted">
+                No saved sets yet.
+              </li>
+            ) : (
+              savedSets.map((entry) => {
+                const isLoaded = entry.id === loadedSetId
+                const confirming = pendingDeleteId === entry.id
+                return (
+                  <li
+                    key={entry.id}
+                    className={cn(
+                      'border-b border-theme-line/60 last:border-b-0',
+                      isLoaded && !confirming && 'bg-theme-raised',
+                      confirming && 'bg-rose-50',
+                    )}
+                  >
+                    {confirming ? (
+                      <div className="flex flex-col gap-1.5 px-2 py-1.5">
+                        <p className="text-xs font-medium text-ink">
+                          Delete {entry.name}?
+                        </p>
+                        <p className="text-[10px] text-ink-muted">
+                          Are you sure? This cannot be undone.
+                        </p>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setPendingDeleteId(null)}
+                            className="rounded-md border border-theme-line px-2 py-0.5 text-xs text-ink-muted hover:text-ink"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              deleteSavedSet(entry.id)
+                              setPendingDeleteId(null)
+                            }}
+                            className="rounded-md border border-rose-400 bg-rose-500 px-2 py-0.5 text-xs font-semibold text-white hover:bg-rose-600"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            loadSavedSet(entry.id)
+                            setSetName(entry.name)
+                            setShowSaved(false)
+                            setPendingDeleteId(null)
+                          }}
+                          className="min-w-0 flex-1 px-2 py-1.5 text-left"
+                        >
+                          <p className="truncate text-xs font-medium text-ink">
+                            {entry.name}
+                          </p>
+                          <p className="font-mono text-[10px] text-ink-faint">
+                            {entry.track_ids.length} tracks
+                          </p>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Delete ${entry.name}`}
+                          onClick={() => setPendingDeleteId(entry.id)}
+                          className="mr-1 rounded p-1 text-ink-faint hover:bg-slate-200 hover:text-ink"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                )
+              })
+            )}
+          </ul>
+        )}
       </header>
 
       {points.length === 0 ? (

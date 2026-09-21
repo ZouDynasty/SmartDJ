@@ -119,13 +119,13 @@ export function AudioPlayer() {
       </div>
 
       <span className="hidden shrink-0 items-center gap-1.5 font-mono text-xs md:flex">
-        <span className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-sky-700">
+        <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-700">
           {bpm === null ? '—' : bpm.toFixed(1)}
         </span>
-        <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-700">
+        <span className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-slate-800">
           {trackKey(playingTrack) ?? '—'}
         </span>
-        <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-violet-700">
+        <span className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-ink">
           {energy === null ? '—' : energy.toFixed(2)}
         </span>
       </span>

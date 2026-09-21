@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Ingest a Rekordbox XML collection into SQLite.
 
-Rekordbox metadata is the source of truth. Scalar ``energy_score`` is computed
-from the local audio file and preserved on re-import. Missing BPM, tonality, or
-genre fall back to the existing Essentia analysis pipeline.
+Re-imports are incremental: unchanged tracks keep their stored analysis,
+Rekordbox-only edits (playlists, titles, cues, ratings) write without
+touching audio, and Essentia / energy run only for new or replaced files.
 """
 
 from __future__ import annotations
@@ -20,6 +20,13 @@ from rich.prompt import Prompt
 
 from urllib.parse import unquote
 
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from api.paths import KIND_FOR_SUFFIX, resolve_audio_path
 from detect_missing import analyze_track
 from extract_tags import (
     DEFAULT_DB_PATH,
@@ -85,10 +92,7 @@ def _update_assignments(*, from_excluded: bool) -> str:
             continue
         ident = _sql_ident(column)
         value = f"excluded.{ident}" if from_excluded else f":{column}"
-        if column == "energy_score":
-            parts.append(f"energy_score = COALESCE(tracks.energy_score, {value})")
-        else:
-            parts.append(f"{ident} = {value}")
+        parts.append(f"{ident} = {value}")
     return ", ".join(parts)
 
 
@@ -203,52 +207,151 @@ def metadata_gaps(track: RekordboxTrack) -> tuple[bool, bool, bool]:
     )
 
 
-def lookup_energy(
-    connection: sqlite3.Connection, track_id: int, file_path: str | None
-) -> float | None:
-    row = connection.execute(
-        "SELECT energy_score FROM tracks WHERE track_id = ?",
-        (track_id,),
-    ).fetchone()
-    if row is not None and row[0] is not None:
-        return float(row[0])
-    if file_path:
-        row = connection.execute(
-            "SELECT energy_score FROM tracks WHERE file_path = ?",
-            (file_path,),
-        ).fetchone()
-        if row is not None and row[0] is not None:
-            return float(row[0])
+def xml_signature(track: RekordboxTrack) -> tuple[str, str, str]:
+    tempo_json, position_json = track.markers_json()
+    return (
+        json.dumps(track.attributes, ensure_ascii=False),
+        tempo_json,
+        position_json,
+    )
+
+
+def xml_unchanged(track: RekordboxTrack, existing: dict[str, Any] | None) -> bool:
+    if existing is None:
+        return False
+    attrs_json, tempo_json, position_json = xml_signature(track)
+    return (
+        existing.get("rekordbox_attrs_json") == attrs_json
+        and existing.get("tempo_markers_json") == tempo_json
+        and existing.get("position_markers_json") == position_json
+    )
+
+
+def load_existing_tracks(connection: sqlite3.Connection) -> dict[int, dict[str, Any]]:
+    """Map Rekordbox TrackID → stored row for incremental compare."""
+    previous = connection.row_factory
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            "SELECT * FROM tracks WHERE track_id IS NOT NULL"
+        ).fetchall()
+        return {int(row["track_id"]): dict(row) for row in rows}
+    finally:
+        connection.row_factory = previous
+
+
+def resolve_track_audio(
+    track: RekordboxTrack, existing: dict[str, Any] | None
+) -> Path | None:
+    audio_path = resolve_audio_path(track.file_path, title=track.name)
+    if audio_path is not None:
+        return audio_path
+    stored = existing.get("file_path") if existing else None
+    if stored:
+        return resolve_audio_path(str(stored), title=track.name)
     return None
+
+
+def audio_changed(
+    existing: dict[str, Any] | None, audio_path: Path | None
+) -> bool:
+    """True when the resolved file is not the one stored from the last ingest.
+
+    Rekordbox ``Size`` often disagrees with ``stat()``, so byte-size is not a
+    signal here. A replacement at the same path is picked up when energy was
+    never stored, or via ``--force-audio``.
+    """
+    if existing is None:
+        return True
+    if audio_path is None or not audio_path.is_file():
+        return False
+    return existing.get("file_path") != str(audio_path)
+
+
+def should_analyze(
+    *,
+    existing: dict[str, Any] | None,
+    audio_path: Path | None,
+    skip_audio: bool,
+    force_audio: bool,
+) -> bool:
+    if skip_audio:
+        return False
+    if audio_path is None or not audio_path.is_file():
+        return False
+    if force_audio or existing is None:
+        return True
+    if audio_changed(existing, audio_path):
+        return True
+    return existing.get("energy_score") is None
 
 
 def enrich_track(
     track: RekordboxTrack,
     *,
-    existing_energy: float | None,
+    existing: dict[str, Any] | None,
     skip_audio: bool,
+    force_audio: bool = False,
 ) -> dict[str, Any]:
+    missing_bpm, missing_tonality, missing_genre = metadata_gaps(track)
     musical_key, camelot_key = parse_key_fields(track.tonality)
     bpm = parse_bpm(track.average_bpm)
     genre = track.genre
     duration = track.total_time
-    energy = existing_energy
+    existing_energy = None
+    if existing is not None and existing.get("energy_score") is not None:
+        existing_energy = float(existing["energy_score"])
+
+    # Prefer Rekordbox when it has a value; otherwise keep stored analysis.
+    if existing is not None:
+        if bpm is None:
+            bpm = existing.get("bpm")
+        if not camelot_key:
+            musical_key = existing.get("key")
+            camelot_key = existing.get("camelot_key")
+        if not genre:
+            genre = existing.get("genre")
+        if duration is None:
+            duration = existing.get("duration")
+
+    audio_path = resolve_track_audio(track, existing)
+    run_analysis = should_analyze(
+        existing=existing,
+        audio_path=audio_path,
+        skip_audio=skip_audio,
+        force_audio=force_audio,
+    )
+    energy = None if (run_analysis and audio_changed(existing, audio_path)) else existing_energy
     sources = {
-        "bpm": "rekordbox" if bpm is not None else None,
-        "key": "rekordbox" if camelot_key is not None else None,
-        "genre": "rekordbox" if genre else None,
+        "bpm": "rekordbox" if track.average_bpm is not None else "stored" if bpm is not None else None,
+        "key": "rekordbox" if track.tonality else "stored" if camelot_key else None,
+        "genre": "rekordbox" if track.genre else "stored" if genre else None,
         "energy_score": "stored" if energy is not None else None,
-        "duration": "rekordbox" if duration is not None else None,
+        "duration": "rekordbox" if track.total_time is not None else "stored" if duration is not None else None,
     }
 
-    missing_bpm, missing_tonality, missing_genre = metadata_gaps(track)
-    needs_audio = (not skip_audio) and (
-        missing_bpm or missing_tonality or missing_genre or energy is None
+    missing_file = bool(
+        audio_path is None or not audio_path.is_file()
+    ) and (run_analysis or existing_energy is None)
+    stored_path = str(audio_path) if audio_path is not None else (
+        existing.get("file_path") if existing else track.file_path
     )
-    audio_path = Path(track.file_path) if track.file_path else None
-    missing_file = bool(needs_audio and (audio_path is None or not audio_path.is_file()))
+    stored_kind = _attr_text(track, "Kind")
+    stored_size = _attr_int(track, "Size")
+    if (
+        audio_path is not None
+        and audio_path.is_file()
+        and audio_path.suffix.lower() != Path(track.file_path or "").suffix.lower()
+    ):
+        stored_kind = KIND_FOR_SUFFIX.get(audio_path.suffix.lower(), stored_kind)
+        stored_size = audio_path.stat().st_size
+    elif existing is not None and stored_path == existing.get("file_path"):
+        if stored_kind is None:
+            stored_kind = existing.get("kind")
+        if stored_size is None:
+            stored_size = existing.get("size")
 
-    if needs_audio and audio_path is not None and audio_path.is_file():
+    if run_analysis and audio_path is not None and audio_path.is_file():
         try:
             analysis = analyze_track(
                 audio_path,
@@ -275,18 +378,18 @@ def enrich_track(
             energy = analysis.get("energy_score")
             sources = analysis.get("sources") or sources
 
-    tempo_json, position_json = track.markers_json()
+    attrs_json, tempo_json, position_json = xml_signature(track)
     return {
         "track_id": track.track_id,
-        "file_path": track.file_path,
+        "file_path": stored_path,
         "title": track.name,
         "artist": track.artist,
         "composer": _attr_text(track, "Composer"),
         "album": _attr_text(track, "Album"),
         "grouping": _attr_text(track, "Grouping"),
         "genre": genre,
-        "kind": _attr_text(track, "Kind"),
-        "size": _attr_int(track, "Size"),
+        "kind": stored_kind,
+        "size": stored_size,
         "duration": duration,
         "disc_number": _attr_int(track, "DiscNumber"),
         "track_number": _attr_int(track, "TrackNumber"),
@@ -307,7 +410,7 @@ def enrich_track(
         "date_modified": _attr_text(track, "DateModified"),
         "tempo_markers_json": tempo_json,
         "position_markers_json": position_json,
-        "rekordbox_attrs_json": json.dumps(track.attributes, ensure_ascii=False),
+        "rekordbox_attrs_json": attrs_json,
         "energy_score": energy,
         "sources": sources,
         "missing_file": missing_file,
@@ -315,7 +418,8 @@ def enrich_track(
         "imputed_key": missing_tonality and camelot_key is not None,
         "imputed_genre": missing_genre and bool(genre),
         "computed_energy": existing_energy is None and energy is not None,
-        "preserved_energy": existing_energy is not None,
+        "preserved_energy": existing_energy is not None and energy == existing_energy,
+        "analyzed": run_analysis,
     }
 
 
@@ -389,6 +493,7 @@ def ingest_library(
     db_path: Path,
     *,
     skip_audio: bool = False,
+    force_audio: bool = False,
     dry_run: bool = False,
 ) -> dict[str, int]:
     library = parse_rekordbox_xml(xml_path)
@@ -396,6 +501,9 @@ def ingest_library(
     skipped_ids: set[int] = set()
     stats = {
         "xml_tracks": len(library.tracks),
+        "unchanged": 0,
+        "updated": 0,
+        "analyzed": 0,
         "upserted": 0,
         "skipped_soundcloud": 0,
         "skipped_unsupported": 0,
@@ -423,15 +531,48 @@ def ingest_library(
             continue
         accepted.append(track)
 
+    playlist_count = sum(
+        1
+        for _path, _parent, node in iter_playlist_rows(library.playlists)
+        if node.node_type == "playlist"
+    )
+
     if dry_run:
-        playlist_count = sum(
-            1
-            for _path, _parent, node in iter_playlist_rows(library.playlists)
-            if node.node_type == "playlist"
-        )
+        existing: dict[int, dict[str, Any]] = {}
+        if db_path.is_file():
+            preview = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            try:
+                existing = load_existing_tracks(preview)
+            finally:
+                preview.close()
+        for track in accepted:
+            stored = existing.get(track.track_id)
+            audio_path = resolve_track_audio(track, stored)
+            if (
+                not force_audio
+                and xml_unchanged(track, stored)
+                and not should_analyze(
+                    existing=stored,
+                    audio_path=audio_path,
+                    skip_audio=skip_audio,
+                    force_audio=force_audio,
+                )
+            ):
+                stats["unchanged"] += 1
+            elif should_analyze(
+                existing=stored,
+                audio_path=audio_path,
+                skip_audio=skip_audio,
+                force_audio=force_audio,
+            ):
+                stats["analyzed"] += 1
+            else:
+                stats["updated"] += 1
         console.print(f"[bold]Dry run[/bold] {xml_path}")
         console.print(
             f"xml_tracks={len(library.tracks)} accepted={len(accepted)} "
+            f"unchanged={stats['unchanged']} metadata={stats['updated']} "
+            f"analyze={stats['analyzed']} "
             f"skipped_soundcloud={stats['skipped_soundcloud']} "
             f"skipped_unsupported={stats['skipped_unsupported']} "
             f"playlists={playlist_count}"
@@ -439,6 +580,7 @@ def ingest_library(
         return stats
 
     with connect_db(db_path) as connection:
+        existing = load_existing_tracks(connection)
         known_ids: set[int] = set()
         with Progress(
             TextColumn("[progress.description]{task.description}"),
@@ -448,17 +590,43 @@ def ingest_library(
             console=console,
         ) as progress:
             task = progress.add_task(
-                f"Ingesting {len(accepted)} Rekordbox track(s)...",
+                f"Refreshing {len(accepted)} Rekordbox track(s)...",
                 total=len(accepted),
             )
             for index, track in enumerate(accepted, start=1):
-                energy = lookup_energy(connection, track.track_id, track.file_path)
+                stored = existing.get(track.track_id)
+                audio_path = resolve_track_audio(track, stored)
+                analyze = should_analyze(
+                    existing=stored,
+                    audio_path=audio_path,
+                    skip_audio=skip_audio,
+                    force_audio=force_audio,
+                )
+                if (
+                    not force_audio
+                    and xml_unchanged(track, stored)
+                    and not analyze
+                ):
+                    known_ids.add(track.track_id)
+                    stats["unchanged"] += 1
+                    if stored is not None and stored.get("energy_score") is not None:
+                        stats["preserved_energy"] += 1
+                    progress.advance(task)
+                    continue
+
                 row = enrich_track(
-                    track, existing_energy=energy, skip_audio=skip_audio
+                    track,
+                    existing=stored,
+                    skip_audio=skip_audio,
+                    force_audio=force_audio,
                 )
                 upsert_track(connection, row)
                 known_ids.add(track.track_id)
                 stats["upserted"] += 1
+                if row["analyzed"]:
+                    stats["analyzed"] += 1
+                else:
+                    stats["updated"] += 1
                 stats["missing_file"] += int(row["missing_file"])
                 stats["imputed_bpm"] += int(row["imputed_bpm"])
                 stats["imputed_key"] += int(row["imputed_key"])
@@ -512,9 +680,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Write XML metadata only (no energy calculation or Essentia fallback).",
     )
     parser.add_argument(
+        "--force-audio",
+        action="store_true",
+        help="Re-run energy / Essentia for every track, even if analysis is already stored.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Parse the XML and print counts without writing to SQLite.",
+        help="Parse the XML and print incremental counts without writing to SQLite.",
     )
     return parser.parse_args(argv)
 
@@ -530,14 +703,16 @@ def main(argv: list[str] | None = None) -> int:
         xml_path,
         args.db.expanduser().resolve(),
         skip_audio=args.skip_audio,
+        force_audio=args.force_audio,
         dry_run=args.dry_run,
     )
     if args.dry_run:
         return 0
 
     console.print(
-        f"Upserted {stats['upserted']} of {stats['xml_tracks']} track(s) into "
-        f"[bold]{args.db}[/bold]"
+        f"Refreshed {stats['xml_tracks']} track(s) into [bold]{args.db}[/bold]  "
+        f"unchanged={stats['unchanged']} metadata={stats['updated']} "
+        f"analyzed={stats['analyzed']}"
     )
     console.print(
         f"[dim]skipped soundcloud={stats['skipped_soundcloud']} "

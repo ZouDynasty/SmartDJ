@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   ChevronDown,
   ChevronUp,
   Disc3,
+  Link2,
   Pause,
   Play,
   Plus,
@@ -11,10 +12,13 @@ import {
   Star,
   X,
 } from 'lucide-react'
+import { endTrackDrag, setTrackDragData } from '@/lib/dragTrack'
 import { cn } from '@/lib/utils'
 import {
   camelotIndex,
+  camelotRelation,
   formatDuration,
+  isMixCompatible,
   normalizedEnergy,
   trackArtist,
   trackBpm,
@@ -121,7 +125,7 @@ function RatingStars({ rating }: { rating: number }) {
           className={cn(
             'size-3',
             star <= rating
-              ? 'fill-amber-400 text-amber-400'
+              ? 'fill-accent text-accent'
               : 'text-ink-faint',
           )}
         />
@@ -149,8 +153,26 @@ export function TrackLibrary() {
   const playTrack = useSetStore((state) => state.playTrack)
   const playingTrack = useSetStore((state) => state.playingTrack)
   const isPlaying = useSetStore((state) => state.isPlaying)
+  const activeQueue = useSetStore((state) => state.activeQueue)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [draggingTrackId, setDraggingTrackId] = useState<number | null>(null)
+  const [showCompatible, setShowCompatible] = useState(false)
+
+  const compatibleSeed = useMemo(() => {
+    const candidates = [
+      playingTrack,
+      selectedTrack,
+      activeQueue.at(-1)?.track ?? null,
+    ]
+    return (
+      candidates.find((track) => {
+        if (!track || trackBpm(track) === null) return false
+        const relation = camelotRelation(trackKey(track), trackKey(track))
+        return relation !== null
+      }) ?? null
+    )
+  }, [activeQueue, playingTrack, selectedTrack])
 
   /** Most common genres first so the tag row stays useful on big libraries. */
   const genreOptions = useMemo(() => {
@@ -174,6 +196,10 @@ export function TrackLibrary() {
         const genre = trackGenre(track)
         if (!genre || !genres.has(genre)) return false
       }
+      if (showCompatible && compatibleSeed) {
+        if (track.track_id === compatibleSeed.track_id) return false
+        if (!isMixCompatible(compatibleSeed, track)) return false
+      }
       if (needle.length === 0) return true
       return (
         trackTitle(track).toLowerCase().includes(needle) ||
@@ -182,7 +208,15 @@ export function TrackLibrary() {
     })
     const factor = sortDirection === 'asc' ? 1 : -1
     return filtered.sort((a, b) => factor * compareTracks(a, b, sortField))
-  }, [catalog, genreFilters, searchQuery, sortDirection, sortField])
+  }, [
+    catalog,
+    compatibleSeed,
+    genreFilters,
+    searchQuery,
+    showCompatible,
+    sortDirection,
+    sortField,
+  ])
 
   const virtualizer = useVirtualizer({
     count: visibleTracks.length,
@@ -211,7 +245,7 @@ export function TrackLibrary() {
       <header className="shrink-0 border-b border-line bg-panel">
         <div className="flex min-w-0 flex-1 items-center gap-2 px-4 py-2.5">
         <div className="flex shrink-0 items-center gap-2 text-ink">
-          <Disc3 className="size-4 text-amber-600" />
+          <Disc3 className="size-4 text-accent" />
           <h2 className="text-xs font-semibold uppercase tracking-wider">
             DJ Catalog
           </h2>
@@ -236,38 +270,59 @@ export function TrackLibrary() {
         </div>
         </div>
 
-      {genreOptions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2.5">
-          {genreOptions.map((genre) => {
-            const isActive = genreFilters.includes(genre)
-            return (
+        <div className="flex items-center gap-3 px-4 pb-2.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {genreOptions.map((genre) => {
+              const isActive = genreFilters.includes(genre)
+              return (
+                <button
+                  key={genre}
+                  type="button"
+                  onClick={() => toggleGenreFilter(genre)}
+                  className={cn(
+                    'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+                    isActive
+                      ? 'border-theme-line bg-theme text-ink'
+                      : 'border-line bg-raised text-ink-muted hover:text-ink',
+                  )}
+                >
+                  {genre}
+                </button>
+              )
+            })}
+            {genreFilters.length > 0 && (
               <button
-                key={genre}
                 type="button"
-                onClick={() => toggleGenreFilter(genre)}
-                className={cn(
-                  'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
-                  isActive
-                    ? 'border-theme-line bg-theme text-ink'
-                    : 'border-line bg-raised text-ink-muted hover:text-ink',
-                )}
+                onClick={clearGenreFilters}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-ink-muted hover:text-ink"
               >
-                {genre}
+                <X className="size-3" />
+                Clear
               </button>
-            )
-          })}
-          {genreFilters.length > 0 && (
-            <button
-              type="button"
-              onClick={clearGenreFilters}
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-ink-muted hover:text-rose-600"
-            >
-              <X className="size-3" />
-              Clear
-            </button>
-          )}
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={!compatibleSeed}
+            title={
+              compatibleSeed
+                ? `Show tracks that mix with ${trackTitle(compatibleSeed)} — same or adjacent Camelot, BPM within 10%`
+                : 'Select or play a track with BPM and key first'
+            }
+            onClick={() => setShowCompatible((current) => !current)}
+            className={cn(
+              'flex shrink-0 items-center gap-2 rounded-lg border-2 px-4 py-2 text-sm font-semibold tracking-tight transition-colors',
+              showCompatible && compatibleSeed
+                ? 'border-accent bg-accent text-white shadow-sm shadow-accent/30'
+                : 'border-accent bg-theme-raised text-accent hover:bg-theme',
+              !compatibleSeed &&
+                'cursor-not-allowed border-line bg-raised text-ink-faint hover:bg-raised',
+            )}
+          >
+            <Link2 className="size-4" />
+            {showCompatible ? 'Showing compatible' : 'Show compatible'}
+          </button>
         </div>
-      )}
       </header>
 
       <div className="mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-panel">
@@ -363,6 +418,16 @@ export function TrackLibrary() {
               return (
                 <div
                   key={`${track.id}-${track.track_id}`}
+                  draggable
+                  onDragStart={(event) => {
+                    setTrackDragData(event.dataTransfer, track)
+                    setSelectedTrack(track)
+                    setDraggingTrackId(track.track_id)
+                  }}
+                  onDragEnd={() => {
+                    setDraggingTrackId(null)
+                    endTrackDrag()
+                  }}
                   onClick={() => setSelectedTrack(track)}
                   onDoubleClick={() => handleAdd(track)}
                   style={{
@@ -374,16 +439,20 @@ export function TrackLibrary() {
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={cn(
-                    'grid cursor-default items-center gap-2 border-b border-line/50 px-3',
+                    'grid cursor-grab items-center gap-2 border-b border-line/50 px-3 active:cursor-grabbing',
                     GRID_TEMPLATE,
-                    isSelected
-                      ? 'bg-theme'
-                      : 'odd:bg-raised/70 hover:bg-raised',
+                    draggingTrackId === track.track_id
+                      ? 'border border-dashed border-accent bg-transparent opacity-40'
+                      : isSelected
+                        ? 'bg-theme'
+                        : 'odd:bg-raised/70 hover:bg-raised',
                   )}
                 >
                   <button
                     type="button"
                     aria-label={`Play ${trackTitle(track)}`}
+                    draggable={false}
+                    onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation()
                       playTrack(track)
@@ -413,20 +482,20 @@ export function TrackLibrary() {
                   <span className="truncate text-xs text-ink-faint">
                     {trackGenre(track) ?? '—'}
                   </span>
-                  <span className="text-right font-mono text-xs text-sky-600">
+                  <span className="text-right font-mono text-xs text-blue-700">
                     {bpm === null ? '—' : bpm.toFixed(1)}
                   </span>
-                  <span className="text-right font-mono text-xs text-amber-600">
+                  <span className="text-right font-mono text-xs text-slate-600">
                     {trackKey(track) ?? '—'}
                   </span>
                   <span className="flex items-center justify-end gap-1.5">
                     <span className="h-1 w-10 overflow-hidden rounded-full bg-canvas">
                       <span
-                        className="block h-full rounded-full bg-violet-400"
+                        className="block h-full rounded-full bg-ink"
                         style={{ width: `${(energy ?? 0) * 100}%` }}
                       />
                     </span>
-                    <span className="font-mono text-xs text-violet-600">
+                    <span className="font-mono text-xs text-ink">
                       {energy === null ? '—' : energy.toFixed(2)}
                     </span>
                   </span>
@@ -435,6 +504,8 @@ export function TrackLibrary() {
                     <button
                       type="button"
                       aria-label={`Add ${trackTitle(track)} to set`}
+                      draggable={false}
+                      onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.stopPropagation()
                         handleAdd(track)
