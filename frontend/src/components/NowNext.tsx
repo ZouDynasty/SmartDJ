@@ -1,12 +1,14 @@
 import { useCallback, useMemo } from 'react'
 import { ArrowRight, Music4, Pause, Play, Radio } from 'lucide-react'
 import { Artwork } from '@/components/Artwork'
+import { MixPathButton } from '@/components/MixPathButton'
 import { useTrackDrop } from '@/lib/dragTrack'
 import { cn } from '@/lib/utils'
 import {
   camelotRelation,
   formatDuration,
   normalizedEnergy,
+  resolveNowNext,
   trackArtist,
   trackBpm,
   trackDuration,
@@ -191,8 +193,9 @@ function TransitionSummary({
 }) {
   if (!current || !next) {
     return (
-      <div className="flex shrink-0 items-center px-2 text-ink-faint">
-        <ArrowRight className="size-4" />
+      <div className="flex shrink-0 flex-col items-center justify-center gap-1.5 px-2">
+        <ArrowRight className="size-4 text-ink-faint" />
+        <MixPathButton compact />
       </div>
     )
   }
@@ -238,6 +241,7 @@ function TransitionSummary({
             : `${energyDelta >= 0 ? '+' : ''}${energyDelta.toFixed(1)} energy`}
         </span>
       </div>
+      <MixPathButton compact />
     </div>
   )
 }
@@ -266,32 +270,22 @@ export function NowNext() {
   )
 
   const { current, next } = useMemo(() => {
-    const queueIndex = playingTrack
-      ? activeQueue.findIndex(
-          (item) => item.track.track_id === playingTrack.track_id,
-        )
-      : -1
-
-    // Playing from the queue: next is whatever follows it.
-    if (queueIndex >= 0) {
-      const following = activeQueue[queueIndex + 1]
-      return {
-        current: toSlot(
-          activeQueue[queueIndex].track,
-          queueIndex + 1,
-          activeQueue[queueIndex].instance_id,
-        ),
-        next: following
-          ? toSlot(following.track, queueIndex + 2, following.instance_id)
-          : null,
-      }
-    }
-
-    // Previewing from the catalog, or nothing loaded: the set starts at the top.
-    const head = activeQueue[0]
+    const pair = resolveNowNext(activeQueue, playingTrack)
     return {
-      current: playingTrack ? toSlot(playingTrack, null, null) : null,
-      next: head ? toSlot(head.track, 1, head.instance_id) : null,
+      current: pair.current
+        ? toSlot(
+            pair.current,
+            pair.currentIndex >= 0 ? pair.currentIndex + 1 : null,
+            pair.currentInstanceId,
+          )
+        : null,
+      next: pair.next
+        ? toSlot(
+            pair.next,
+            pair.nextIndex >= 0 ? pair.nextIndex + 1 : null,
+            pair.nextInstanceId,
+          )
+        : null,
     }
   }, [activeQueue, playingTrack])
 

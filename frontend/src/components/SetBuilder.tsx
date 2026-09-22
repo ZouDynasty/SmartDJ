@@ -16,6 +16,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { FolderOpen, ListMusic, Pause, Play, Save, Trash2, X } from 'lucide-react'
+import { MixPathButton } from '@/components/MixPathButton'
 import { cn } from '@/lib/utils'
 import { buildSetPoints, formatDuration } from '@/lib/setMath'
 import type { SetPoint } from '@/lib/setMath'
@@ -326,6 +327,7 @@ export function SetBuilder({ width }: { width: number }) {
             </button>
           )}
         </div>
+        <MixPathButton stretch />
         {showSaved && (
           <ul className="max-h-40 overflow-y-auto rounded-md border border-theme-line bg-theme">
             {savedSets.length === 0 ? (
@@ -413,7 +415,8 @@ export function SetBuilder({ width }: { width: number }) {
       {points.length === 0 ? (
         <div className="m-3 rounded-lg border border-dashed border-theme-line bg-theme-raised px-4 py-8 text-center">
           <p className="text-sm text-ink-muted">
-            Queue is empty — add tracks from the catalog.
+            Queue is empty — drop tracks on Now and Next, then find the shortest
+            mixing path between them.
           </p>
         </div>
       ) : (

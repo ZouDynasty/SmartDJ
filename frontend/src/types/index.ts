@@ -89,6 +89,17 @@ export interface Recommendation {
   score: number | null
 }
 
+/** Dijkstra mix route returned by ``GET /api/mix-path``. */
+export interface MixPath {
+  found: boolean
+  hops: number
+  cost: number | null
+  start_id: number
+  goal_id: number
+  track_ids: number[]
+  tracks: Track[]
+}
+
 /** Which metric lines the set trajectory graph renders. */
 export type MetricView = 'all' | 'bpm' | 'energy' | 'key'
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { resolveNowNext } from '@/lib/setMath'
 import { loadSavedSets, persistSavedSets } from '@/lib/savedSets'
 import type {
   MetricView,
@@ -89,6 +90,8 @@ interface SetStore {
   setCatalogError: (message: string | null) => void
 
   setActiveQueue: (queue: SetItem[]) => void
+  /** Splice Dijkstra intermediates between the Now Playing and Up Next tracks. */
+  insertMixPath: (pathTracks: Track[]) => void
   addTrackToSet: (track: Track) => void
   /** Insert at the current play position and start playback. */
   playNow: (track: Track) => void
@@ -163,6 +166,38 @@ export const useSetStore = create<SetStore>()((set) => ({
   setCatalogError: (message) => set({ catalogError: message }),
 
   setActiveQueue: (queue) => set({ activeQueue: queue }),
+
+  insertMixPath: (pathTracks) =>
+    set((state) => {
+      if (pathTracks.length < 2) return {}
+      const pair = resolveNowNext(state.activeQueue, state.playingTrack)
+      if (!pair.current || !pair.next) return {}
+
+      const middles = pathTracks.slice(1, -1).map(createSetItem)
+      const queue = state.activeQueue
+
+      const nextQueue =
+        pair.currentIndex >= 0
+          ? [
+              ...queue.slice(0, pair.currentIndex + 1),
+              ...middles,
+              ...queue.slice(
+                pair.nextIndex >= 0 ? pair.nextIndex : pair.currentIndex + 1,
+              ),
+            ]
+          : [
+              createSetItem(pathTracks[0]),
+              ...middles,
+              ...queue.slice(pair.nextIndex >= 0 ? pair.nextIndex : 0),
+            ]
+
+      return {
+        activeQueue: nextQueue,
+        loadedSetId: null,
+        highlightedInstanceId: null,
+        highlightSource: null,
+      }
+    }),
 
   addTrackToSet: (track) =>
     set((state) => ({

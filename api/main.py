@@ -10,11 +10,12 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -23,10 +24,19 @@ from api.library import (
     DEFAULT_DB_PATH,
     connect,
     fetch_audio_path,
+    fetch_internal_id,
     fetch_playlists,
     fetch_track,
     fetch_tracks,
+    fetch_tracks_by_internal_ids,
 )
+
+_ML_DIR = Path(__file__).resolve().parent.parent / "ml"
+if str(_ML_DIR) not in sys.path:
+    sys.path.insert(0, str(_ML_DIR))
+
+from candidate_retriever import CandidateRetriver
+from nearest_path import Nearest_Path
 
 DB_PATH = Path(os.environ.get("SMARTDJ_DB", DEFAULT_DB_PATH)).expanduser()
 
@@ -137,6 +147,71 @@ def list_playlists(
     connection: sqlite3.Connection = Depends(get_connection),
 ) -> list[dict[str, Any]]:
     return fetch_playlists(connection)
+
+
+def _require_mixable(track: dict[str, Any], role: str) -> None:
+    title = track.get("title") or f"track {track.get('track_id')}"
+    if not track.get("camelot_key") or not str(track["camelot_key"]).strip():
+        raise HTTPException(
+            status_code=400,
+            detail=f"{role} '{title}' has no Camelot key",
+        )
+    if not track.get("bpm"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{role} '{title}' has no BPM",
+        )
+
+
+@app.get("/api/mix-path")
+def mix_path(
+    start_id: int = Query(..., description="Rekordbox track_id of the opener"),
+    goal_id: int = Query(..., description="Rekordbox track_id of the closer"),
+    max_hops: int = Query(10, ge=1, le=15),
+    connection: sqlite3.Connection = Depends(get_connection),
+) -> dict[str, Any]:
+    """Shortest mixable route between two library tracks (Dijkstra)."""
+    if start_id == goal_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Start and goal must be different tracks",
+        )
+
+    start = fetch_track(connection, start_id)
+    goal = fetch_track(connection, goal_id)
+    if start is None:
+        raise HTTPException(status_code=404, detail=f"Unknown track_id {start_id}")
+    if goal is None:
+        raise HTTPException(status_code=404, detail=f"Unknown track_id {goal_id}")
+
+    _require_mixable(start, "Start")
+    _require_mixable(goal, "Goal")
+
+    start_pk = fetch_internal_id(connection, start_id)
+    goal_pk = fetch_internal_id(connection, goal_id)
+    if start_pk is None or goal_pk is None:
+        raise HTTPException(status_code=404, detail="Track is missing from the library")
+
+    searcher = Nearest_Path(
+        CandidateRetriver(str(DB_PATH)),
+        start_pk,
+        goal_pk,
+        maximum_hops=max_hops,
+    )
+    searcher.calculate_path()
+    path_pks = searcher.get_path()
+    tracks = fetch_tracks_by_internal_ids(connection, path_pks)
+    found = len(path_pks) > 0 and path_pks[-1] == goal_pk
+
+    return {
+        "found": found,
+        "hops": max(len(tracks) - 1, 0) if found else 0,
+        "cost": searcher.best_cost.get(goal_pk) if found else None,
+        "start_id": start_id,
+        "goal_id": goal_id,
+        "track_ids": [track["track_id"] for track in tracks] if found else [],
+        "tracks": tracks if found else [],
+    }
 
 
 @app.get("/api/tracks/{track_id}/artwork")

@@ -45,9 +45,9 @@ def get_genre_distance(genre_a, genre_b):
 
     return GENRE_LOOKUP[(genre_a, genre_b)]
 
-BPM_WEIGHT = 0.5
-ENERGY_WEIGHT = 0.3
-GENRE_WEIGHT = 0.2
+BPM_WEIGHT = 1
+ENERGY_WEIGHT = 0
+GENRE_WEIGHT = 0
 
 
 def overall_distance(track_a, track_b):

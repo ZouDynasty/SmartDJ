@@ -118,6 +118,54 @@ export function isMixCompatible(from: Track, to: Track): boolean {
   return bpmCompatible(trackBpm(from), trackBpm(to))
 }
 
+/** The Now Playing / Up Next pair shown in the transport strip. */
+export interface NowNextPair {
+  current: Track | null
+  next: Track | null
+  /** Queue index of the current track, or -1 when it is not in the set. */
+  currentIndex: number
+  /** Queue index of the next track, or -1 when Up Next is empty. */
+  nextIndex: number
+  currentInstanceId: string | null
+  nextInstanceId: string | null
+}
+
+/**
+ * Same pairing the Now / Next panel uses: a playing queue track plus the
+ * song after it, or a catalog preview plus the head of the set.
+ */
+export function resolveNowNext(
+  queue: SetItem[],
+  playingTrack: Track | null,
+): NowNextPair {
+  const queueIndex = playingTrack
+    ? queue.findIndex((item) => item.track.track_id === playingTrack.track_id)
+    : -1
+
+  if (queueIndex >= 0) {
+    const current = queue[queueIndex]
+    const following = queue[queueIndex + 1]
+    return {
+      current: current.track,
+      next: following?.track ?? null,
+      currentIndex: queueIndex,
+      nextIndex: following ? queueIndex + 1 : -1,
+      currentInstanceId: current.instance_id,
+      nextInstanceId: following?.instance_id ?? null,
+    }
+  }
+
+  const head = queue[0]
+  return {
+    current: playingTrack,
+    next: head?.track ?? null,
+    currentIndex: -1,
+    nextIndex: head ? 0 : -1,
+    currentInstanceId: null,
+    nextInstanceId: head?.instance_id ?? null,
+  }
+}
+
 export function trackTitle(track: Track): string {
   return track.title?.trim() || 'Untitled'
 }

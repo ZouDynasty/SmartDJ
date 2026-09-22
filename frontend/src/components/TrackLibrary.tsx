@@ -12,6 +12,7 @@ import {
   Star,
   X,
 } from 'lucide-react'
+import { MixPathButton } from '@/components/MixPathButton'
 import { endTrackDrag, setTrackDragData } from '@/lib/dragTrack'
 import { cn } from '@/lib/utils'
 import {
@@ -270,7 +271,7 @@ export function TrackLibrary() {
         </div>
         </div>
 
-        <div className="flex items-center gap-3 px-4 pb-2.5">
+        <div className="flex flex-wrap items-center gap-3 px-4 pb-2.5">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
             {genreOptions.map((genre) => {
               const isActive = genreFilters.includes(genre)
@@ -301,27 +302,30 @@ export function TrackLibrary() {
               </button>
             )}
           </div>
-          <button
-            type="button"
-            disabled={!compatibleSeed}
-            title={
-              compatibleSeed
-                ? `Show tracks that mix with ${trackTitle(compatibleSeed)} — same or adjacent Camelot, BPM within 10%`
-                : 'Select or play a track with BPM and key first'
-            }
-            onClick={() => setShowCompatible((current) => !current)}
-            className={cn(
-              'flex shrink-0 items-center gap-2 rounded-lg border-2 px-4 py-2 text-sm font-semibold tracking-tight transition-colors',
-              showCompatible && compatibleSeed
-                ? 'border-accent bg-accent text-white shadow-sm shadow-accent/30'
-                : 'border-accent bg-theme-raised text-accent hover:bg-theme',
-              !compatibleSeed &&
-                'cursor-not-allowed border-line bg-raised text-ink-faint hover:bg-raised',
-            )}
-          >
-            <Link2 className="size-4" />
-            {showCompatible ? 'Showing compatible' : 'Show compatible'}
-          </button>
+          <div className="flex shrink-0 items-start gap-2">
+            <MixPathButton />
+            <button
+              type="button"
+              disabled={!compatibleSeed}
+              title={
+                compatibleSeed
+                  ? `Show tracks that mix with ${trackTitle(compatibleSeed)} — same or adjacent Camelot, BPM within 10%`
+                  : 'Select or play a track with BPM and key first'
+              }
+              onClick={() => setShowCompatible((current) => !current)}
+              className={cn(
+                'flex shrink-0 items-center gap-2 rounded-lg border-2 px-4 py-2 text-sm font-semibold tracking-tight transition-colors',
+                showCompatible && compatibleSeed
+                  ? 'border-accent bg-accent text-white shadow-sm shadow-accent/30'
+                  : 'border-accent bg-theme-raised text-accent hover:bg-theme',
+                !compatibleSeed &&
+                  'cursor-not-allowed border-line bg-raised text-ink-faint hover:bg-raised',
+              )}
+            >
+              <Link2 className="size-4" />
+              {showCompatible ? 'Showing compatible' : 'Show compatible'}
+            </button>
+          </div>
         </div>
       </header>
 

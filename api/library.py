@@ -138,6 +138,32 @@ def fetch_tracks(connection: sqlite3.Connection) -> list[dict[str, Any]]:
     return [_row_to_track(row) for row in rows]
 
 
+def fetch_internal_id(connection: sqlite3.Connection, track_id: int) -> int | None:
+    """Map a Rekordbox ``track_id`` to the SQLite primary key used by the ML layer."""
+    row = connection.execute(
+        "SELECT id FROM tracks WHERE track_id = ?",
+        (track_id,),
+    ).fetchone()
+    return int(row["id"]) if row is not None else None
+
+
+def fetch_tracks_by_internal_ids(
+    connection: sqlite3.Connection,
+    internal_ids: list[int],
+) -> list[dict[str, Any]]:
+    """Catalog rows for Dijkstra node ids, in path order."""
+    if not internal_ids:
+        return []
+    placeholders = ",".join("?" * len(internal_ids))
+    rows = connection.execute(
+        f"SELECT {_SELECT_COLUMNS}, position_markers_json "
+        f"FROM tracks WHERE id IN ({placeholders})",
+        internal_ids,
+    ).fetchall()
+    by_pk = {int(row["id"]): _row_to_track(row) for row in rows}
+    return [by_pk[pk] for pk in internal_ids if pk in by_pk]
+
+
 def fetch_track(connection: sqlite3.Connection, track_id: int) -> dict[str, Any] | None:
     """Full detail for one track, including the dense beatgrid."""
     row = connection.execute(

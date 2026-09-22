@@ -1,4 +1,4 @@
-import type { Playlist, Recommendation, Track } from '@/types'
+import type { MixPath, Playlist, Recommendation, Track } from '@/types'
 
 export const API_BASE = 'http://localhost:8000/api'
 
@@ -11,7 +11,16 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     },
   })
   if (!response.ok) {
-    throw new Error(`API ${response.status} ${response.statusText}: ${path}`)
+    let detail = `API ${response.status} ${response.statusText}: ${path}`
+    try {
+      const body = (await response.json()) as { detail?: unknown }
+      if (typeof body.detail === 'string' && body.detail.trim()) {
+        detail = body.detail
+      }
+    } catch {
+      /* keep the status line when the body is not JSON */
+    }
+    throw new Error(detail)
   }
   return response.json() as Promise<T>
 }
@@ -48,4 +57,17 @@ export function getRecommendations(
 ): Promise<Recommendation[]> {
   const params = new URLSearchParams({ track_id: String(trackId) })
   return apiFetch<Recommendation[]>(`/recommendations?${params}`, { signal })
+}
+
+/** Shortest mixable route between two catalog tracks. */
+export function getMixPath(
+  startId: number,
+  goalId: number,
+  signal?: AbortSignal,
+): Promise<MixPath> {
+  const params = new URLSearchParams({
+    start_id: String(startId),
+    goal_id: String(goalId),
+  })
+  return apiFetch<MixPath>(`/mix-path?${params}`, { signal })
 }

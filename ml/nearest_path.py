@@ -1,11 +1,15 @@
-from SmartDJ.ml import candidate_retriever
-from SmartDJ.ml.distance import get_key_distance, overall_distance
-from candidate_retriever import CandidateRetriver
 import heapq
+
+from candidate_retriever import CandidateRetriver
+from distance import get_key_distance, overall_distance
+
+#: Labeling uses a tight LIMIT; the search needs the full compatible neighborhood
+#: or the only bridge to the goal can be hidden.
+CANDIDATE_LIMIT = 1000
 
 
 class Nearest_Path:
-    def __init__(self, retriever: CandidateRetriver, start_id: int, goal_id: int, maximum_hops: int = 10):
+    def __init__(self, retriever: CandidateRetriver, start_id: int, goal_id: int, maximum_hops: int = 30):
         self.retriever = retriever
         self.start_id = start_id
         self.goal_id = goal_id
@@ -15,13 +19,30 @@ class Nearest_Path:
 
         self.visited = set[int]()
         self.neighbors: dict[int, list[dict]] = {}
+
         self.best_cost: dict[int, float] = {start_id: 0.0}
         self.came_from: dict[int, int] = {}
         self.depth: dict[int, int] = {start_id: 0}
 
 
-    def calculate_path(self):
+    def _neighbors_of(self, track_id: int) -> list[dict]:
+        cached = self.neighbors.get(track_id)
+        if cached is not None:
+            return cached
 
+        try:
+            _current, candidates = self.retriever.retrieve_candidates(
+                track_id,
+                limit=CANDIDATE_LIMIT,
+            )
+        except ValueError:
+            candidates = []
+
+        self.neighbors[track_id] = candidates
+        return candidates
+
+
+    def calculate_path(self):
         min_heap = [(0.0, self.start_id)]
 
         while min_heap:
@@ -39,9 +60,10 @@ class Nearest_Path:
                 continue
 
             current_track = self.retriever.get_track_by_id(current_id)
-            candidates = self.retriever.retrieve_candidates(current_id)
+            if current_track is None:
+                continue
 
-            for candidate_track in candidates:
+            for candidate_track in self._neighbors_of(current_id):
                 candidate_id = candidate_track["id"]
 
                 if candidate_id in self.visited:
@@ -58,9 +80,9 @@ class Nearest_Path:
                 candidate_key_distance = get_key_distance(candidate_key, self.goal_key)
 
                 if (candidate_key_distance < current_key_distance):
-                    distance = 0.75 * distance
+                    distance = 0.9 * distance
                 elif(candidate_key_distance > current_key_distance):
-                    distance = 1.33 * distance
+                    distance = 1.1111 * distance
 
                 candidate_cost = cost + distance
 
@@ -73,19 +95,20 @@ class Nearest_Path:
                     neighbor = (candidate_cost, candidate_id)
                     heapq.heappush(min_heap, neighbor)
             
-            
+
     def get_path(self):
-        path = []   
+        if self.start_id == self.goal_id:
+            return [self.start_id]
+
+        if self.goal_id not in self.came_from:
+            return []
+
+        path = []
         current_id = self.goal_id
-        while(current_id in self.came_from):
+        while current_id in self.came_from:
             path.append(current_id)
             current_id = self.came_from[current_id]
-        
+
         path.append(self.start_id)
-
+        path.reverse()
         return path
-
-
-        
-
-    
