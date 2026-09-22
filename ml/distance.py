@@ -45,4 +45,29 @@ def get_genre_distance(genre_a, genre_b):
 
     return GENRE_LOOKUP[(genre_a, genre_b)]
 
+BPM_WEIGHT = 0.5
+ENERGY_WEIGHT = 0.3
+GENRE_WEIGHT = 0.2
+
+
+def overall_distance(track_a, track_b):
+    bpm_cost = get_bpm_distance(track_a["bpm"], track_b["bpm"])
+
+    energy_a = track_a.get("energy_score")
+    energy_b = track_b.get("energy_score")
+    if energy_a is None or energy_b is None:
+        energy_cost = 0.0
+    else:
+        energy_cost = abs(get_energy_distance(energy_a, energy_b))
+
+    genre_cost = 1.0 - get_genre_distance(
+        track_a.get("macro_genre"),
+        track_b.get("macro_genre"),
+    )
+
+    return (
+        BPM_WEIGHT * bpm_cost
+        + ENERGY_WEIGHT * energy_cost
+        + GENRE_WEIGHT * genre_cost
+    )
 
