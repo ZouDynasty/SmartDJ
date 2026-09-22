@@ -4,21 +4,27 @@ Local DJ set builder. It serves your Rekordbox library from SQLite, streams the 
 
 ## Run
 
-You need two processes: the FastAPI library server on port 8000, and the Vite frontend on port 5173.
+```bash
+./run.sh
+```
 
-From the project root:
+That starts both halves — the FastAPI library server on port 8000 and the Vite frontend on port 5173 — and leaves them running in the one terminal. Ctrl-C stops both. Open [http://localhost:5173/](http://localhost:5173/).
+
+Before starting, the script checks that `.venv` and `frontend/node_modules` exist and that both ports are free, so a leftover server fails fast with a clear message instead of half-starting. It also exits if either server dies, rather than leaving a loading frontend in front of a dead API.
+
+To run them separately — handy when restarting just one:
 
 ```bash
-# 1. API
+# API (from the project root)
 .venv/bin/python -m uvicorn api.main:app --reload --port 8000
 
-# 2. Frontend (second terminal)
+# Frontend (second terminal)
 cd frontend && npm run dev
 ```
 
-Then open [http://localhost:5173/](http://localhost:5173/).
+Start the API from the project root. It imports `api.main`, so any other working directory fails with `ModuleNotFoundError: No module named 'api'`.
 
-The frontend talks to `http://localhost:8000/api`. The API reads `data/library.sqlite` by default (override with `SMARTDJ_DB`).
+The frontend talks to `http://localhost:8000/api`. Both ports are hardcoded on both sides — the API only allows CORS from `localhost:5173` — so changing one means editing `api/main.py` and `frontend/src/lib/api.ts` together. The API reads `data/library.sqlite` by default (override with `SMARTDJ_DB`).
 
 ## First-time setup
 
