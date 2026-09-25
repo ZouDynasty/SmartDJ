@@ -96,6 +96,8 @@ export interface MixPath {
   cost: number | null
   start_id: number
   goal_id: number
+  /** Macro genres the intermediate tracks were limited to; empty means any. */
+  genres: string[]
   track_ids: number[]
   tracks: Track[]
 }

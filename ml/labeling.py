@@ -28,10 +28,10 @@ MIN_SAMPLE = 4
 MAX_SAMPLE = 6
 EXACT_BPM_DISTANCE = 0.05  # normalized; 0.05 == 0.5% BPM at 10% tolerance
 BOUNDARY_BPM_DISTANCE = 0.75
-#: energy_score is a percentile rank on 0-10 (see audio_extraction/energy.py),
-#: so pair deltas are spread wide. 5.0 is the 75th percentile of random pairs,
+#: energy_score is absolute on 0-10 (see audio_extraction/energy.py) and most
+#: tracks sit between 4 and 7. 1.4 is the 75th percentile of random pairs,
 #: keeping the "energy shift" bucket to genuinely large jumps.
-ENERGY_GAP = 5.0
+ENERGY_GAP = 1.4
 KEY_STEP = 1.0 / 7.0
 
 

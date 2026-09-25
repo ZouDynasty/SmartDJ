@@ -1,21 +1,49 @@
 import heapq
+from collections.abc import Collection
+from typing import Optional
 
 from candidate_retriever import CandidateRetriver
-from distance import get_key_distance, overall_distance
+from distance import get_genre_distance, get_key_distance, overall_distance
 
 #: Labeling uses a tight LIMIT; the search needs the full compatible neighborhood
 #: or the only bridge to the goal can be hidden.
 CANDIDATE_LIMIT = 1000
 
+#: Per-dimension multiplier for a hop that moves toward (or away from) the goal.
+TOWARD_GOAL = 0.9
+AWAY_FROM_GOAL = 1 / TOWARD_GOAL
+
+
+def _steer(current_gap: Optional[float], candidate_gap: Optional[float]) -> float:
+    if current_gap is None or candidate_gap is None:
+        return 1.0
+    if candidate_gap < current_gap:
+        return TOWARD_GOAL
+    if candidate_gap > current_gap:
+        return AWAY_FROM_GOAL
+    return 1.0
+
 
 class Nearest_Path:
-    def __init__(self, retriever: CandidateRetriver, start_id: int, goal_id: int, maximum_hops: int = 30):
+    def __init__(
+        self,
+        retriever: CandidateRetriver,
+        start_id: int,
+        goal_id: int,
+        maximum_hops: int = 30,
+        genres: Optional[Collection[str]] = None,
+    ):
         self.retriever = retriever
         self.start_id = start_id
         self.goal_id = goal_id
         self.maximum_hops = maximum_hops
+        #: Intermediate tracks must be in one of these macro genres; the goal is exempt.
+        self.genres = set(genres) if genres else None
 
-        self.goal_key = self.retriever.get_track_by_id(self.goal_id)["camelot_key"]
+        goal_track = self.retriever.get_track_by_id(self.goal_id)
+        self.goal_key = goal_track["camelot_key"]
+        self.goal_energy = goal_track.get("energy_score")
+        self.goal_genre = goal_track.get("macro_genre")
 
         self.visited = set[int]()
         self.neighbors: dict[int, list[dict]] = {}
@@ -34,12 +62,35 @@ class Nearest_Path:
             _current, candidates = self.retriever.retrieve_candidates(
                 track_id,
                 limit=CANDIDATE_LIMIT,
+                genres=self.genres,
+                always_include=(self.goal_id,),
             )
         except ValueError:
             candidates = []
 
         self.neighbors[track_id] = candidates
         return candidates
+
+
+    def _key_gap(self, track: dict) -> float:
+        return get_key_distance(track["camelot_key"], self.goal_key)
+
+    def _energy_gap(self, track: dict) -> Optional[float]:
+        energy = track.get("energy_score")
+        if energy is None or self.goal_energy is None:
+            return None
+        return abs(energy - self.goal_energy)
+
+    def _genre_gap(self, track: dict) -> float:
+        return 1.0 - get_genre_distance(track.get("macro_genre"), self.goal_genre)
+
+    def _goal_bias(self, current_track: dict, candidate_track: dict) -> float:
+        """Reward hops that move key, energy, and genre toward the goal track."""
+        return (
+            _steer(self._key_gap(current_track), self._key_gap(candidate_track))
+            * _steer(self._energy_gap(current_track), self._energy_gap(candidate_track))
+            * _steer(self._genre_gap(current_track), self._genre_gap(candidate_track))
+        )
 
 
     def calculate_path(self):
@@ -70,19 +121,7 @@ class Nearest_Path:
                     continue
 
                 distance = overall_distance(current_track, candidate_track)
-
-
-                ## rewarding moving in direction of closer key
-                current_key = current_track["camelot_key"]
-                candidate_key = candidate_track["camelot_key"]
-
-                current_key_distance = get_key_distance(current_key, self.goal_key)
-                candidate_key_distance = get_key_distance(candidate_key, self.goal_key)
-
-                if (candidate_key_distance < current_key_distance):
-                    distance = 0.9 * distance
-                elif(candidate_key_distance > current_key_distance):
-                    distance = 1.1111 * distance
+                distance *= self._goal_bias(current_track, candidate_track)
 
                 candidate_cost = cost + distance
 

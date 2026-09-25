@@ -15,12 +15,13 @@ export function MixPathButton({
   const activeQueue = useSetStore((state) => state.activeQueue)
   const playingTrack = useSetStore((state) => state.playingTrack)
   const insertMixPath = useSetStore((state) => state.insertMixPath)
+  const genreFilters = useSetStore((state) => state.genreFilters)
 
   const [status, setStatus] = useState<
     | { kind: 'idle' }
     | { kind: 'loading' }
     | { kind: 'ready'; hops: number; start: string; goal: string }
-    | { kind: 'empty' }
+    | { kind: 'empty'; genres: string[] }
     | { kind: 'error'; message: string }
   >({ kind: 'idle' })
 
@@ -42,10 +43,11 @@ export function MixPathButton({
     const { start, goal } = endpoints
     setStatus({ kind: 'loading' })
 
-    getMixPath(start.track_id, goal.track_id)
+    const genres = [...genreFilters]
+    getMixPath(start.track_id, goal.track_id, genres)
       .then((path) => {
         if (!path.found || path.tracks.length === 0) {
-          setStatus({ kind: 'empty' })
+          setStatus({ kind: 'empty', genres })
           return
         }
         insertMixPath(path.tracks)
@@ -65,11 +67,13 @@ export function MixPathButton({
               : 'Failed to find a mixing path.',
         })
       })
-  }, [endpoints, insertMixPath])
+  }, [endpoints, genreFilters, insertMixPath])
 
   const disabled = endpoints === null || status.kind === 'loading'
+  const genreScope =
+    genreFilters.length > 0 ? ` through ${genreFilters.join(', ')}` : ''
   const tooltip = endpoints
-    ? `Find the shortest mixable route from ${trackTitle(endpoints.start)} to ${trackTitle(endpoints.goal)}`
+    ? `Find the shortest mixable route from ${trackTitle(endpoints.start)} to ${trackTitle(endpoints.goal)}${genreScope}`
     : 'Load a track in Now Playing and another in Up Next'
 
   return (
@@ -88,7 +92,7 @@ export function MixPathButton({
         className={cn(
           'flex items-center justify-center gap-2 rounded-lg border-2 font-semibold tracking-tight transition-colors',
           compact
-            ? 'px-2.5 py-1 text-xs'
+            ? 'px-2.5 py-1 text-xs whitespace-nowrap'
             : 'px-4 py-2 text-sm',
           stretch ? 'w-full' : 'shrink-0',
           status.kind === 'loading'
@@ -103,9 +107,21 @@ export function MixPathButton({
         {status.kind === 'loading'
           ? 'Finding path…'
           : compact
-            ? 'Find path'
+            ? 'Find shortest mixing path'
             : 'Shortest mixing path'}
       </button>
+      {status.kind === 'idle' && !compact && (
+        <p
+          className={cn(
+            'max-w-72 text-[11px] text-ink-faint',
+            stretch ? 'text-center' : 'text-right',
+          )}
+        >
+          {genreFilters.length > 0
+            ? `Only mixing through ${genreFilters.join(', ')}`
+            : 'Tip: select genres in the library to mix only through those'}
+        </p>
+      )}
       {status.kind === 'ready' && (
         <p
           className={cn(
@@ -118,7 +134,11 @@ export function MixPathButton({
       )}
       {status.kind === 'empty' && (
         <p className="max-w-72 text-center text-[11px] text-rose-600">
-          No mixable path within 10 hops.
+          No mixable path within 10 hops
+          {status.genres.length > 0
+            ? ` through ${status.genres.join(', ')}`
+            : ''}
+          .
         </p>
       )}
       {status.kind === 'error' && (

@@ -49,6 +49,10 @@ BPM_WEIGHT = 0.4
 ENERGY_WEIGHT = 0.2
 GENRE_WEIGHT = 0.4
 
+#: Unknown energy is priced like an unknown genre (0.5) so unanalyzed tracks
+#: are not free bridges.
+MISSING_ENERGY_COST = 0.5
+
 
 def overall_distance(track_a, track_b):
     bpm_cost = get_bpm_distance(track_a["bpm"], track_b["bpm"])
@@ -56,7 +60,7 @@ def overall_distance(track_a, track_b):
     energy_a = track_a.get("energy_score")
     energy_b = track_b.get("energy_score")
     if energy_a is None or energy_b is None:
-        energy_cost = 0.0
+        energy_cost = MISSING_ENERGY_COST
     else:
         energy_cost = abs(get_energy_distance(energy_a, energy_b))
 

@@ -168,9 +168,17 @@ def mix_path(
     start_id: int = Query(..., description="Rekordbox track_id of the opener"),
     goal_id: int = Query(..., description="Rekordbox track_id of the closer"),
     max_hops: int = Query(10, ge=1, le=15),
+    genres: list[str] = Query(
+        default=[],
+        description="Macro genres intermediate tracks must belong to (repeatable)",
+    ),
     connection: sqlite3.Connection = Depends(get_connection),
 ) -> dict[str, Any]:
-    """Shortest mixable route between two library tracks (Dijkstra)."""
+    """Shortest mixable route between two library tracks (Dijkstra).
+
+    When ``genres`` is given, every track between the start and goal must be in
+    one of them; the start and goal themselves are exempt.
+    """
     if start_id == goal_id:
         raise HTTPException(
             status_code=400,
@@ -197,6 +205,7 @@ def mix_path(
         start_pk,
         goal_pk,
         maximum_hops=max_hops,
+        genres=[genre.strip() for genre in genres if genre.strip()],
     )
     searcher.calculate_path()
     path_pks = searcher.get_path()
@@ -209,6 +218,7 @@ def mix_path(
         "cost": searcher.best_cost.get(goal_pk) if found else None,
         "start_id": start_id,
         "goal_id": goal_id,
+        "genres": sorted(searcher.genres) if searcher.genres else [],
         "track_ids": [track["track_id"] for track in tracks] if found else [],
         "tracks": tracks if found else [],
     }

@@ -1,4 +1,5 @@
 import sqlite3
+from collections.abc import Collection
 from typing import Any, Optional
 
 import distance
@@ -15,7 +16,7 @@ class CandidateRetriver:
     def get_track_by_id(self, track_id: int) -> Optional[dict]:
         query = """
         SELECT id, file_path, title, artist, duration, bpm,
-               "key", camelot_key, energy_score, genre as macro_genre
+               "key", camelot_key, energy_score, macro_genre
         FROM tracks
         WHERE id = ?
         """
@@ -24,7 +25,19 @@ class CandidateRetriver:
             row = conn.execute(query, (track_id,)).fetchone()
             return dict(row) if row is not None else None
 
-    def retrieve_candidates(self, track_id: int, limit = 100, max_bpm_tolerance = 0.10) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    def retrieve_candidates(
+        self,
+        track_id: int,
+        limit = 100,
+        max_bpm_tolerance = 0.10,
+        genres: Optional[Collection[str]] = None,
+        always_include: Collection[int] = (),
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Mixable neighbours of ``track_id``.
+
+        ``genres`` restricts candidates to those macro genres; ids in
+        ``always_include`` bypass that filter (but not key / BPM compatibility).
+        """
         current_track = self.get_track_by_id(track_id)
         if (not current_track):
             raise ValueError("track id does not exist")
@@ -37,32 +50,48 @@ class CandidateRetriver:
         current_key = current_track.get("camelot_key")
         current_bpm = current_track.get("bpm")
 
+        genre_clause = ""
+        genre_params: list[Any] = []
+        if genres:
+            genre_list = list(genres)
+            include_list = list(always_include)
+            genre_clause = f"AND (macro_genre IN ({','.join('?' * len(genre_list))})"
+            if include_list:
+                genre_clause += f" OR id IN ({','.join('?' * len(include_list))})"
+            genre_clause += ")"
+            genre_params = genre_list + include_list
+
         conn = self.get_connection()
 
         try:
             conn.create_function("KEY_DISTANCE", 2, distance.get_key_distance)
             conn.create_function("BPM_DISTANCE", 3, distance.get_bpm_distance)
 
-            query = """
+            query = f"""
             SELECT id, file_path, title, artist, duration, bpm,
-                "key", camelot_key, energy_score, genre as macro_genre
+                "key", camelot_key, energy_score, macro_genre
             FROM tracks
             WHERE camelot_key IS NOT NULL
             AND trim(camelot_key) != ''
             AND bpm IS NOT NULL
+            {genre_clause}
             AND KEY_DISTANCE(?, camelot_key) <= 1.0/7.0
             AND BPM_DISTANCE(?, bpm, ?) <= 1
             AND id != ?
             LIMIT ?
             """
 
-            candidates = conn.execute(query, (current_key, current_bpm, max_bpm_tolerance, current_track["id"], limit)).fetchall()
+            params = (
+                *genre_params,
+                current_key,
+                current_bpm,
+                max_bpm_tolerance,
+                current_track["id"],
+                limit,
+            )
+            candidates = conn.execute(query, params).fetchall()
             candidate_list = [dict(row) for row in candidates]
             return (current_track, candidate_list)
         
         finally:
             conn.close()
-        
-
-
-

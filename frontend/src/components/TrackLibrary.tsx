@@ -12,7 +12,6 @@ import {
   Star,
   X,
 } from 'lucide-react'
-import { MixPathButton } from '@/components/MixPathButton'
 import { endTrackDrag, setTrackDragData } from '@/lib/dragTrack'
 import { cn } from '@/lib/utils'
 import {
@@ -186,7 +185,6 @@ export function TrackLibrary() {
     return [...counts.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, MAX_GENRE_TAGS)
-      .map(([genre]) => genre)
   }, [catalog])
 
   const visibleTracks = useMemo(() => {
@@ -273,12 +271,13 @@ export function TrackLibrary() {
 
         <div className="flex flex-wrap items-center gap-3 px-4 pb-2.5">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-            {genreOptions.map((genre) => {
+            {genreOptions.map(([genre, count]) => {
               const isActive = genreFilters.includes(genre)
               return (
                 <button
                   key={genre}
                   type="button"
+                  aria-pressed={isActive}
                   onClick={() => toggleGenreFilter(genre)}
                   className={cn(
                     'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
@@ -288,6 +287,14 @@ export function TrackLibrary() {
                   )}
                 >
                   {genre}
+                  <span
+                    className={cn(
+                      'ml-1.5 font-mono tabular-nums',
+                      isActive ? 'text-ink-muted' : 'text-ink-faint',
+                    )}
+                  >
+                    {count}
+                  </span>
                 </button>
               )
             })}
@@ -303,7 +310,6 @@ export function TrackLibrary() {
             )}
           </div>
           <div className="flex shrink-0 items-start gap-2">
-            <MixPathButton />
             <button
               type="button"
               disabled={!compatibleSeed}

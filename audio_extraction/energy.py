@@ -10,22 +10,20 @@ Pipeline:
 1. Decode mono at 22.05 kHz.
 2. Slide a 45 s window at a 5 s hop and keep the chunk with peak RMS.
 3. Extract six features **only inside that chunk**.
-4. Percentile-rank each feature in the library, mix them, and rank the
-   composite again onto 0–10.
+4. Scale each feature onto 0–1 between fixed floor / ceiling values, take the
+   weighted mean, and multiply by 10.
 
-Raw features are stored per track so weights can be retuned with
-``recompute_energy.py --rescore-only``.
+Scores are absolute: a track's energy depends only on its own audio, never on
+the rest of the library. Raw features are stored per track so weights and
+ranges can be retuned with ``recompute_energy.py --rescore-only``.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any
 
 import librosa
 import numpy as np
-from scipy.stats import rankdata
 
 ANALYSIS_SAMPLE_RATE = 22050
 WINDOW_SEC = 45.0
@@ -50,11 +48,17 @@ FEATURE_WEIGHTS: dict[str, float] = {
 
 FEATURE_COLUMNS: tuple[str, ...] = tuple(FEATURE_WEIGHTS)
 
-CALIBRATION_POINTS = 101
-
-DEFAULT_CALIBRATION_PATH = (
-    Path(__file__).resolve().parent.parent / "data" / "energy_calibration.json"
-)
+#: Fixed (floor, ceiling) per feature: the floor scores 0 and the ceiling 1,
+#: clipped outside. They are absolute on purpose so a track's energy never
+#: depends on what else is in the library (e.g. short scratch samples).
+FEATURE_RANGES: dict[str, tuple[float, float]] = {
+    "energy_hf_ratio": (0.0, 0.10),
+    "energy_centroid_hz": (1000.0, 4000.0),
+    "energy_lf_ratio": (0.2, 0.9),
+    "energy_onsets_per_beat": (0.5, 4.0),
+    "energy_flux": (0.1, 0.4),
+    "energy_loudness_db": (-24.0, -4.0),
+}
 
 
 def load_audio(file_path: str | Path, sample_rate: int = ANALYSIS_SAMPLE_RATE):
@@ -213,123 +217,25 @@ def analyze_energy_features(
     return extract_energy_features(audio, sample_rate)
 
 
-def percentile_ranks(values: np.ndarray) -> np.ndarray:
-    """Rank ``values`` into 0..1, averaging ranks across ties."""
-    array = np.asarray(values, dtype=np.float64)
-    count = array.size
-    if count == 0:
-        return array
-    if count == 1:
-        return np.array([0.5])
-    return (rankdata(array, method="average") - 1.0) / (count - 1)
+def normalize_feature(name: str, value: float) -> float:
+    """Place ``value`` on 0..1 between the feature's fixed floor and ceiling."""
+    floor, ceiling = FEATURE_RANGES[name]
+    return float(np.clip((value - floor) / (ceiling - floor), 0.0, 1.0))
 
 
-def composite_from_ranks(ranks: dict[str, np.ndarray]) -> np.ndarray:
-    """Weighted mean of per-feature ranks, renormalized over present features."""
-    total_weight = sum(
-        FEATURE_WEIGHTS[name] for name in ranks if name in FEATURE_WEIGHTS
-    )
-    if total_weight <= 0:
-        raise ValueError("No weighted energy features supplied")
-    stacked = None
-    for name, values in ranks.items():
-        weight = FEATURE_WEIGHTS.get(name)
-        if weight is None:
-            continue
-        contribution = values * (weight / total_weight)
-        stacked = contribution if stacked is None else stacked + contribution
-    if stacked is None:
-        raise ValueError("No weighted energy features supplied")
-    return stacked
+def score_features(features: dict[str, float | None]) -> float | None:
+    """Absolute 0–10 energy from one track's raw features.
 
-
-def build_calibration(
-    features: dict[str, np.ndarray], composite: np.ndarray
-) -> dict[str, Any]:
-    """Quantile breakpoints letting a single new track be scored later."""
-    probabilities = np.linspace(0.0, 100.0, CALIBRATION_POINTS)
-    return {
-        "version": 2,
-        "track_count": int(composite.size),
-        "window_sec": WINDOW_SEC,
-        "hop_sec": HOP_SEC,
-        "sample_rate": ANALYSIS_SAMPLE_RATE,
-        "weights": FEATURE_WEIGHTS,
-        "features": {
-            name: np.percentile(values, probabilities).tolist()
-            for name, values in features.items()
-        },
-        "composite": np.percentile(composite, probabilities).tolist(),
-    }
-
-
-def save_calibration(calibration: dict[str, Any], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(calibration, indent=2), encoding="utf-8")
-
-
-def load_calibration(path: Path = DEFAULT_CALIBRATION_PATH) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    try:
-        parsed = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(parsed, dict) or "composite" not in parsed:
-        return None
-    return parsed
-
-
-def _rank_against(value: float, breakpoints: list[float]) -> float:
-    """Where ``value`` falls within stored quantiles, as 0..1."""
-    curve = np.asarray(breakpoints, dtype=np.float64)
-    if curve.size == 0:
-        return 0.5
-    positions = np.linspace(0.0, 1.0, curve.size)
-    return float(np.interp(value, curve, positions))
-
-
-def score_with_calibration(
-    features: dict[str, float], calibration: dict[str, Any] | None
-) -> float | None:
-    """Score one track's features against a stored library distribution.
-
-    Used when ingesting a handful of new tracks, where re-ranking the whole
-    library would be wasteful. Returns ``None`` without a calibration file.
+    Weights are renormalized over the features that are present, so a single
+    missing value does not zero the score. Returns ``None`` if none are usable.
     """
-    if not calibration:
-        return None
-    feature_curves = calibration.get("features") or {}
-    ranks = {
-        name: _rank_against(value, feature_curves[name])
+    parts = [
+        (FEATURE_WEIGHTS[name], normalize_feature(name, float(value)))
         for name, value in features.items()
-        if name in feature_curves and value is not None
-    }
-    if not ranks:
-        return None
-
-    total_weight = sum(
-        FEATURE_WEIGHTS[name] for name in ranks if name in FEATURE_WEIGHTS
-    )
+        if name in FEATURE_WEIGHTS and value is not None and np.isfinite(value)
+    ]
+    total_weight = sum(weight for weight, _ in parts)
     if total_weight <= 0:
         return None
-    composite = sum(
-        rank * FEATURE_WEIGHTS[name] / total_weight
-        for name, rank in ranks.items()
-        if name in FEATURE_WEIGHTS
-    )
-    return round(_rank_against(composite, calibration["composite"]) * 10.0, 1)
-
-
-def scores_from_features(
-    features: dict[str, np.ndarray],
-) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    """Rank a whole library at once.
-
-    Returns ``(scores 0-10, composite, calibration)``. Ranking the composite a
-    second time is what forces the output to occupy the full scale.
-    """
-    ranks = {name: percentile_ranks(values) for name, values in features.items()}
-    composite = composite_from_ranks(ranks)
-    scores = np.round(percentile_ranks(composite) * 10.0, 1)
-    return scores, composite, build_calibration(features, composite)
+    composite = sum(weight * part for weight, part in parts) / total_weight
+    return round(composite * 10.0, 1)

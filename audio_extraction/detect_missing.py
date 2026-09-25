@@ -22,11 +22,7 @@ import numpy as np
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from energy import (
-    extract_energy_features,
-    load_calibration,
-    score_with_calibration,
-)
+from energy import extract_energy_features, score_features
 from extract_tags import (
     DEFAULT_DB_PATH,
     TrackInfo,
@@ -143,16 +139,14 @@ def extract_key(audio) -> tuple[str | None, str | None]:
 
 
 def extract_energy_score(audio, sample_rate: int = ANALYSIS_SAMPLE_RATE) -> float | None:
-    """Score perceived energy on 0–10 against the library's own distribution.
+    """Score perceived energy on an absolute 0–10 scale.
 
-    Features come from the loudest 45 s of the file (see ``energy.py``). The
-    score is interpolated against the quantiles that ``recompute_energy.py``
-    wrote. Returns ``None`` when no calibration exists yet.
+    Features come from the loudest 45 s of the file (see ``energy.py``).
     """
     features = extract_energy_features(audio, sample_rate)
     if features is None:
         return None
-    return score_with_calibration(features, load_calibration())
+    return score_features(features)
 
 
 def _model_destination(filename: str) -> Path:

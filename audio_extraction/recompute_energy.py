@@ -5,9 +5,9 @@ Two passes:
 
 1. Decode every track, locate the loudest 45 s window, and store the six raw
    features. This is the expensive pass and runs in a process pool.
-2. Rank those features within the library, mix them, and rank again to produce
-   ``energy_score`` on 0–10. Weights in ``energy.py`` can be retuned and only
-   this pass rerun (``--rescore-only``).
+2. Score each track's stored features on the absolute 0–10 scale in
+   ``energy.py``. Weights and ranges there can be retuned and only this pass
+   rerun (``--rescore-only``).
 
 Usage::
 
@@ -33,11 +33,9 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from energy import (  # noqa: E402
-    DEFAULT_CALIBRATION_PATH,
     FEATURE_COLUMNS,
     analyze_energy_features,
-    save_calibration,
-    scores_from_features,
+    score_features,
 )
 from extract_tags import DEFAULT_DB_PATH, connect_db  # noqa: E402
 
@@ -135,10 +133,8 @@ def extract_pass(
     return ok, len(failures)
 
 
-def rescore_pass(
-    connection: sqlite3.Connection, calibration_path: Path
-) -> np.ndarray | None:
-    """Rank stored features library-wide and write ``energy_score``."""
+def rescore_pass(connection: sqlite3.Connection) -> np.ndarray | None:
+    """Score each track's stored features and write ``energy_score``."""
     columns = ", ".join(FEATURE_COLUMNS)
     conditions = " AND ".join(f"{column} IS NOT NULL" for column in FEATURE_COLUMNS)
     rows = connection.execute(
@@ -148,25 +144,18 @@ def rescore_pass(
         console.print("[red]No tracks have energy features yet.[/red]")
         return None
 
-    ids = np.array([row[0] for row in rows], dtype=np.int64)
-    features = {
-        column: np.array([row[index + 1] for row in rows], dtype=np.float64)
-        for index, column in enumerate(FEATURE_COLUMNS)
-    }
+    payload: list[tuple[float, int]] = []
+    for row in rows:
+        score = score_features(dict(zip(FEATURE_COLUMNS, row[1:])))
+        if score is not None:
+            payload.append((score, int(row[0])))
 
-    scores, _composite, calibration = scores_from_features(features)
-    payload = [
-        (float(score), int(track_id)) for score, track_id in zip(scores, ids)
-    ]
     with connection:
         connection.executemany(
             "UPDATE tracks SET energy_score = ? WHERE id = ?",
             payload,
         )
-
-    save_calibration(calibration, calibration_path)
-    console.print(f"Calibration written to [cyan]{calibration_path}[/cyan]")
-    return scores
+    return np.array([score for score, _ in payload], dtype=np.float64)
 
 
 def print_distribution(scores: np.ndarray) -> None:
@@ -190,12 +179,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
     parser.add_argument(
-        "--calibration",
-        type=Path,
-        default=DEFAULT_CALIBRATION_PATH,
-        help="Where to write the quantile breakpoints used to score new tracks.",
-    )
-    parser.add_argument(
         "--workers",
         type=int,
         default=max((os.cpu_count() or 4) - 1, 1),
@@ -209,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--rescore-only",
         action="store_true",
-        help="Skip audio analysis; just re-rank stored features.",
+        help="Skip audio analysis; just rescore stored features.",
     )
     parser.add_argument("--limit", type=int, default=None, help="Analyze at most N tracks.")
     args = parser.parse_args(argv)
@@ -228,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
                 ok, failed = extract_pass(connection, jobs, args.workers)
                 console.print(f"Features stored for {ok} track(s), {failed} failed")
 
-        scores = rescore_pass(connection, args.calibration)
+        scores = rescore_pass(connection)
         if scores is not None:
             print_distribution(scores)
     finally:

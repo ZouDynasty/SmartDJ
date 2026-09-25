@@ -59,15 +59,20 @@ export function getRecommendations(
   return apiFetch<Recommendation[]>(`/recommendations?${params}`, { signal })
 }
 
-/** Shortest mixable route between two catalog tracks. */
+/**
+ * Shortest mixable route between two catalog tracks. Non-empty `genres`
+ * restricts the intermediate tracks to those macro genres.
+ */
 export function getMixPath(
   startId: number,
   goalId: number,
+  genres: string[] = [],
   signal?: AbortSignal,
 ): Promise<MixPath> {
   const params = new URLSearchParams({
     start_id: String(startId),
     goal_id: String(goalId),
   })
+  for (const genre of genres) params.append('genres', genre)
   return apiFetch<MixPath>(`/mix-path?${params}`, { signal })
 }
