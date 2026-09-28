@@ -13,6 +13,16 @@ import {
   X,
 } from 'lucide-react'
 import { endTrackDrag, setTrackDragData } from '@/lib/dragTrack'
+import {
+  DEFAULT_COLUMN_WIDTHS,
+  clampColumnWidth,
+  columnGridTemplate,
+  columnMinTableWidth,
+  loadColumnWidths,
+  persistColumnWidths,
+  type LibraryColumn,
+  type LibraryColumnWidths,
+} from '@/lib/libraryColumns'
 import { cn } from '@/lib/utils'
 import {
   camelotIndex,
@@ -34,9 +44,19 @@ import type { SortDirection, SortField, Track } from '@/types'
 const ROW_HEIGHT = 44
 const MAX_GENRE_TAGS = 16
 
-/** Shared grid template keeps the sticky header aligned with virtual rows. */
-const GRID_TEMPLATE =
-  'grid-cols-[32px_minmax(0,3fr)_minmax(0,2fr)_minmax(0,1.4fr)_68px_60px_104px_92px_84px]'
+const HEADER_COLUMNS: {
+  field: LibraryColumn & SortField
+  label: string
+  align?: 'left' | 'right'
+}[] = [
+  { field: 'title', label: 'Title' },
+  { field: 'artist', label: 'Artist' },
+  { field: 'genre', label: 'Genre' },
+  { field: 'bpm', label: 'BPM', align: 'right' },
+  { field: 'key', label: 'Key', align: 'right' },
+  { field: 'energy', label: 'Energy', align: 'right' },
+  { field: 'rating', label: 'Rating' },
+]
 
 /** Nulls always sink to the bottom regardless of sort direction. */
 function compareNumeric(a: number | null, b: number | null): number {
@@ -116,6 +136,63 @@ function SortHeading({
   )
 }
 
+/** Drag the right edge of a header cell to resize; double-click resets it. */
+function ColumnResizer({
+  column,
+  label,
+  width,
+  onResize,
+  onResizeEnd,
+}: {
+  column: LibraryColumn
+  label: string
+  width: number
+  onResize: (column: LibraryColumn, width: number) => void
+  onResizeEnd: () => void
+}) {
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${label} column`}
+      title={`Drag to resize ${label} · double-click to reset`}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => {
+        event.stopPropagation()
+        onResize(column, DEFAULT_COLUMN_WIDTHS[column])
+        onResizeEnd()
+      }}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return
+        event.preventDefault()
+        event.stopPropagation()
+        const startX = event.clientX
+        const startWidth = width
+        document.body.classList.add('is-panel-resizing')
+        document.body.style.cursor = 'col-resize'
+
+        const onMove = (moveEvent: PointerEvent) => {
+          onResize(column, startWidth + moveEvent.clientX - startX)
+        }
+        const onUp = () => {
+          window.removeEventListener('pointermove', onMove)
+          window.removeEventListener('pointerup', onUp)
+          window.removeEventListener('pointercancel', onUp)
+          document.body.classList.remove('is-panel-resizing')
+          document.body.style.removeProperty('cursor')
+          onResizeEnd()
+        }
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+        window.addEventListener('pointercancel', onUp)
+      }}
+      className="group absolute -inset-y-2 -right-[7px] z-10 flex w-2.5 cursor-col-resize touch-none select-none justify-center"
+    >
+      <span className="h-full w-px bg-line transition-colors group-hover:w-0.5 group-hover:bg-accent group-active:w-0.5 group-active:bg-accent" />
+    </span>
+  )
+}
+
 function RatingStars({ rating }: { rating: number }) {
   return (
     <span className="flex items-center gap-0.5" title={`${rating} of 5`}>
@@ -156,7 +233,36 @@ export function TrackLibrary() {
   const activeQueue = useSetStore((state) => state.activeQueue)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const headerScrollRef = useRef<HTMLDivElement>(null)
   const [draggingTrackId, setDraggingTrackId] = useState<number | null>(null)
+  const [columnWidths, setColumnWidths] =
+    useState<LibraryColumnWidths>(loadColumnWidths)
+  /** Latest widths, readable synchronously when a drag or reset ends. */
+  const columnWidthsRef = useRef(columnWidths)
+
+  const gridStyle = useMemo(
+    () => ({
+      gridTemplateColumns: columnGridTemplate(columnWidths),
+      minWidth: columnMinTableWidth(columnWidths),
+    }),
+    [columnWidths],
+  )
+
+  const handleColumnResize = useCallback(
+    (column: LibraryColumn, width: number) => {
+      const current = columnWidthsRef.current
+      const clamped = clampColumnWidth(column, width)
+      if (current[column] === clamped) return
+      const next = { ...current, [column]: clamped }
+      columnWidthsRef.current = next
+      setColumnWidths(next)
+    },
+    [],
+  )
+
+  const handleColumnResizeEnd = useCallback(() => {
+    persistColumnWidths(columnWidthsRef.current)
+  }, [])
   const [showCompatible, setShowCompatible] = useState(false)
 
   const compatibleSeed = useMemo(() => {
@@ -269,8 +375,8 @@ export function TrackLibrary() {
         </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 px-4 pb-2.5">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        <div className="flex items-center gap-3 px-4 pb-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
             {genreOptions.map(([genre, count]) => {
               const isActive = genreFilters.includes(genre)
               return (
@@ -280,7 +386,7 @@ export function TrackLibrary() {
                   aria-pressed={isActive}
                   onClick={() => toggleGenreFilter(genre)}
                   className={cn(
-                    'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+                    'shrink-0 rounded-full border px-2.5 py-0.5 text-xs transition-colors',
                     isActive
                       ? 'border-theme-line bg-theme text-ink'
                       : 'border-line bg-raised text-ink-muted hover:text-ink',
@@ -302,14 +408,14 @@ export function TrackLibrary() {
               <button
                 type="button"
                 onClick={clearGenreFilters}
-                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-ink-muted hover:text-ink"
+                className="flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs text-ink-muted hover:text-ink"
               >
                 <X className="size-3" />
                 Clear
               </button>
             )}
           </div>
-          <div className="flex shrink-0 items-start gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               disabled={!compatibleSeed}
@@ -320,7 +426,7 @@ export function TrackLibrary() {
               }
               onClick={() => setShowCompatible((current) => !current)}
               className={cn(
-                'flex shrink-0 items-center gap-2 rounded-lg border-2 px-4 py-2 text-sm font-semibold tracking-tight transition-colors',
+                'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-tight transition-colors',
                 showCompatible && compatibleSeed
                   ? 'border-accent bg-accent text-white shadow-sm shadow-accent/30'
                   : 'border-accent bg-theme-raised text-accent hover:bg-theme',
@@ -328,7 +434,7 @@ export function TrackLibrary() {
                   'cursor-not-allowed border-line bg-raised text-ink-faint hover:bg-raised',
               )}
             >
-              <Link2 className="size-4" />
+              <Link2 className="size-3.5" />
               {showCompatible ? 'Showing compatible' : 'Show compatible'}
             </button>
           </div>
@@ -337,69 +443,51 @@ export function TrackLibrary() {
 
       <div className="mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-panel">
         <div
-          className={cn(
-            'grid shrink-0 items-center gap-2 border-b border-line bg-raised px-3 py-2',
-            'text-xs font-medium uppercase tracking-wider text-ink-muted',
-            GRID_TEMPLATE,
-          )}
+          ref={headerScrollRef}
+          className="shrink-0 overflow-hidden border-b border-line bg-raised"
         >
-          <span />
-          <SortHeading
-            field="title"
-            label="Title"
-            active={sortField === 'title'}
-            direction={sortDirection}
-            onSort={handleSort}
-          />
-          <SortHeading
-            field="artist"
-            label="Artist"
-            active={sortField === 'artist'}
-            direction={sortDirection}
-            onSort={handleSort}
-          />
-          <SortHeading
-            field="genre"
-            label="Genre"
-            active={sortField === 'genre'}
-            direction={sortDirection}
-            onSort={handleSort}
-          />
-          <SortHeading
-            field="bpm"
-            label="BPM"
-            active={sortField === 'bpm'}
-            direction={sortDirection}
-            align="right"
-            onSort={handleSort}
-          />
-          <SortHeading
-            field="key"
-            label="Key"
-            active={sortField === 'key'}
-            direction={sortDirection}
-            align="right"
-            onSort={handleSort}
-          />
-          <SortHeading
-            field="energy"
-            label="Energy"
-            active={sortField === 'energy'}
-            direction={sortDirection}
-            align="right"
-            onSort={handleSort}
-          />
-          <SortHeading
-            field="rating"
-            label="Rating"
-            active={sortField === 'rating'}
-            direction={sortDirection}
-            onSort={handleSort}
-          />
-          <span className="text-right">Add</span>
+          <div
+            className="grid items-center gap-2 px-3 py-2 text-xs font-medium uppercase tracking-wider text-ink-muted"
+            style={gridStyle}
+          >
+            <span />
+            {HEADER_COLUMNS.map(({ field, label, align }) => (
+              <div key={field} className="relative flex min-w-0 items-center">
+                <SortHeading
+                  field={field}
+                  label={label}
+                  active={sortField === field}
+                  direction={sortDirection}
+                  align={align}
+                  onSort={handleSort}
+                />
+                <ColumnResizer
+                  column={field}
+                  label={label}
+                  width={columnWidths[field]}
+                  onResize={handleColumnResize}
+                  onResizeEnd={handleColumnResizeEnd}
+                />
+              </div>
+            ))}
+            <span />
+            <span className="text-right">Add</span>
+          </div>
         </div>
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          ref={scrollRef}
+          onScroll={(event) => {
+            const header = headerScrollRef.current
+            if (header) header.scrollLeft = event.currentTarget.scrollLeft
+          }}
+          className="min-h-0 flex-1 overflow-auto"
+        >
+          {catalogStatus === 'idle' && (
+            <p className="px-3 py-6 text-sm text-ink-muted">
+              Sign in to load your library.
+            </p>
+          )}
           {catalogStatus === 'loading' && (
             <p className="px-3 py-6 text-sm text-ink-muted">Loading catalog…</p>
           )}
@@ -416,7 +504,10 @@ export function TrackLibrary() {
 
           <div
             className="relative w-full"
-            style={{ height: virtualizer.getTotalSize() }}
+            style={{
+              height: virtualizer.getTotalSize(),
+              minWidth: gridStyle.minWidth,
+            }}
           >
             {virtualizer.getVirtualItems().map((virtualRow) => {
               const track = visibleTracks[virtualRow.index]
@@ -447,10 +538,10 @@ export function TrackLibrary() {
                     width: '100%',
                     height: virtualRow.size,
                     transform: `translateY(${virtualRow.start}px)`,
+                    gridTemplateColumns: gridStyle.gridTemplateColumns,
                   }}
                   className={cn(
                     'grid cursor-grab items-center gap-2 border-b border-line/50 px-3 active:cursor-grabbing',
-                    GRID_TEMPLATE,
                     draggingTrackId === track.track_id
                       ? 'border border-dashed border-accent bg-transparent opacity-40'
                       : isSelected
@@ -498,8 +589,8 @@ export function TrackLibrary() {
                   <span className="text-right font-mono text-xs text-slate-600">
                     {trackKey(track) ?? '—'}
                   </span>
-                  <span className="flex items-center justify-end gap-1.5">
-                    <span className="h-1 w-10 overflow-hidden rounded-full bg-canvas">
+                  <span className="flex min-w-0 items-center justify-end gap-1.5 overflow-hidden">
+                    <span className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-canvas">
                       <span
                         className="block h-full rounded-full bg-ink"
                         style={{ width: `${(energy ?? 0) * 100}%` }}
@@ -510,6 +601,7 @@ export function TrackLibrary() {
                     </span>
                   </span>
                   <RatingStars rating={trackRating(track)} />
+                  <span />
                   <span className="flex justify-end">
                     <button
                       type="button"

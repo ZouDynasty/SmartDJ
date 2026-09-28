@@ -11,15 +11,19 @@ import os
 import re
 import sqlite3
 import sys
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from starlette.middleware.sessions import SessionMiddleware
 
+from api import auth
 from api.artwork import extract_artwork
+from api.db import init_db
 from api.library import (
     DEFAULT_DB_PATH,
     connect,
@@ -62,15 +66,39 @@ MEDIA_TYPES = {
 
 RANGE_PATTERN = re.compile(r"bytes=(\d*)-(\d*)")
 
-app = FastAPI(title="SmartDJ Library API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    init_db()
+    yield
+
+
+app = FastAPI(title="SmartDJ Library API", version="1.0.0", lifespan=lifespan)
+
+# Only used to carry OAuth state between /login and /callback; login
+# sessions themselves live in the app database.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=auth.SESSION_SECRET,
+    session_cookie=auth.OAUTH_STATE_COOKIE,
+    max_age=10 * 60,
+    same_site="lax",
+    https_only=auth.COOKIE_SECURE,
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(ALLOWED_ORIGINS),
-    allow_methods=["GET"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
     allow_headers=["Range", "Content-Type"],
     expose_headers=["Accept-Ranges", "Content-Range", "Content-Length"],
 )
+
+app.include_router(auth.router)
+
+#: Route-level dependencies run before parameter dependencies, so an
+#: unauthenticated request is rejected before the library database is opened.
+SIGNED_IN = [Depends(auth.require_user)]
 
 #: Parsing 3k rows is cheap but not free; reuse it until the library is re-ingested.
 _catalog_cache: tuple[float, list[dict[str, Any]]] | None = None
@@ -95,6 +123,7 @@ def health() -> dict[str, Any]:
         "status": "ok" if exists else "missing-database",
         "database": str(DB_PATH),
         "database_exists": exists,
+        "google_auth_configured": auth.GOOGLE_CONFIGURED,
     }
 
 
@@ -110,7 +139,7 @@ def _cached_catalog(connection: sqlite3.Connection) -> list[dict[str, Any]]:
     return tracks
 
 
-@app.get("/api/tracks")
+@app.get("/api/tracks", dependencies=SIGNED_IN)
 def list_tracks(
     min_duration: float = 0.0,
     connection: sqlite3.Connection = Depends(get_connection),
@@ -130,7 +159,7 @@ def list_tracks(
     ]
 
 
-@app.get("/api/tracks/{track_id}")
+@app.get("/api/tracks/{track_id}", dependencies=SIGNED_IN)
 def get_track(
     track_id: int,
     connection: sqlite3.Connection = Depends(get_connection),
@@ -142,7 +171,7 @@ def get_track(
     return track
 
 
-@app.get("/api/playlists")
+@app.get("/api/playlists", dependencies=SIGNED_IN)
 def list_playlists(
     connection: sqlite3.Connection = Depends(get_connection),
 ) -> list[dict[str, Any]]:
@@ -163,7 +192,7 @@ def _require_mixable(track: dict[str, Any], role: str) -> None:
         )
 
 
-@app.get("/api/mix-path")
+@app.get("/api/mix-path", dependencies=SIGNED_IN)
 def mix_path(
     start_id: int = Query(..., description="Rekordbox track_id of the opener"),
     goal_id: int = Query(..., description="Rekordbox track_id of the closer"),
@@ -224,7 +253,7 @@ def mix_path(
     }
 
 
-@app.get("/api/tracks/{track_id}/artwork")
+@app.get("/api/tracks/{track_id}/artwork", dependencies=SIGNED_IN)
 def get_track_artwork(
     track_id: int,
     connection: sqlite3.Connection = Depends(get_connection),
@@ -242,7 +271,7 @@ def get_track_artwork(
     return Response(
         content=data,
         media_type=media_type,
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "private, max-age=86400"},
     )
 
 
@@ -285,7 +314,7 @@ def _iter_file(path: Path, start: int, length: int) -> Iterator[bytes]:
             yield chunk
 
 
-@app.get("/api/tracks/{track_id}/audio")
+@app.get("/api/tracks/{track_id}/audio", dependencies=SIGNED_IN)
 def stream_track_audio(
     track_id: int,
     range_header: str | None = Header(default=None, alias="Range"),

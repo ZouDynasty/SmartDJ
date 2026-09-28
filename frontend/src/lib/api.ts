@@ -1,9 +1,16 @@
-import type { MixPath, Playlist, Recommendation, Track } from '@/types'
+import type {
+  AuthStatus,
+  MixPath,
+  Playlist,
+  Recommendation,
+  Track,
+} from '@/types'
 
 export const API_BASE = 'http://localhost:8000/api'
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
     ...init,
     headers: {
       Accept: 'application/json',
@@ -75,4 +82,24 @@ export function getMixPath(
   })
   for (const genre of genres) params.append('genres', genre)
   return apiFetch<MixPath>(`/mix-path?${params}`, { signal })
+}
+
+/**
+ * Full-page navigation target, not a fetch: the API redirects to Google and
+ * Google redirects back to the API, which then returns to the app.
+ */
+export const GOOGLE_LOGIN_URL = `${API_BASE}/auth/google/login`
+
+export function getAuthStatus(signal?: AbortSignal): Promise<AuthStatus> {
+  return apiFetch<AuthStatus>('/auth/me', { signal })
+}
+
+export async function logout(): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  if (!response.ok) {
+    throw new Error(`API ${response.status} ${response.statusText}: /auth/logout`)
+  }
 }

@@ -17,3 +17,9 @@ rich>=13.7.0
 # Local API serving the library + audio to the frontend
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
+
+# Google sign-in
+authlib>=1.8.0
+httpx2>=2.13.0
+itsdangerous>=2.1.0
+python-dotenv>=1.0.0

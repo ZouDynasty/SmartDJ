@@ -102,6 +102,23 @@ export interface MixPath {
   tracks: Track[]
 }
 
+/** Row from the app database's `users` table. */
+export interface AuthUser {
+  id: number
+  email: string
+  email_verified: boolean
+  name: string | null
+  picture_url: string | null
+  created_at: string
+  last_login_at: string
+}
+
+/** ``GET /api/auth/me``. `configured` is false until Google keys are set in `.env`. */
+export interface AuthStatus {
+  configured: boolean
+  user: AuthUser | null
+}
+
 /** Which metric lines the set trajectory graph renders. */
 export type MetricView = 'all' | 'bpm' | 'energy' | 'key'
 

@@ -35,6 +35,10 @@ if [ ! -f data/library.sqlite ]; then
   printf 'warning: data/library.sqlite is missing; the UI will report missing-database\n' >&2
 fi
 
+# Every launch starts signed out. This lives here rather than in the API's
+# startup hook so that --reload does not sign you out on each code change.
+"$PYTHON" -c 'from api.db import clear_sessions; clear_sessions()'
+
 "$PYTHON" -m uvicorn api.main:app --reload --port "$API_PORT" &
 API_PID=$!
 

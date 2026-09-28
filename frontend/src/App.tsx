@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Headphones, TriangleAlert } from 'lucide-react'
+import { AccountButton } from '@/components/AccountButton'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { NowNext } from '@/components/NowNext'
 import { ResizeHandle } from '@/components/ResizeHandle'
 import { SetBuilder } from '@/components/SetBuilder'
 import { SetGraph } from '@/components/SetGraph'
 import { TrackLibrary } from '@/components/TrackLibrary'
-import { getTracks } from '@/lib/api'
+import { getAuthStatus, getTracks } from '@/lib/api'
 import {
   clampGraphHeight,
   clampSidebarWidth,
@@ -26,6 +27,8 @@ function App() {
   const setCatalog = useSetStore((state) => state.setCatalog)
   const setCatalogStatus = useSetStore((state) => state.setCatalogStatus)
   const setCatalogError = useSetStore((state) => state.setCatalogError)
+  const setAuth = useSetStore((state) => state.setAuth)
+  const signedInUserId = useSetStore((state) => state.auth?.user?.id ?? null)
 
   const columnRef = useRef<HTMLDivElement>(null)
   const dragOrigin = useRef(loadPanelLayout())
@@ -41,6 +44,19 @@ function App() {
   graphHeightRef.current = graphHeight
 
   useEffect(() => {
+    const controller = new AbortController()
+    getAuthStatus(controller.signal)
+      .then(setAuth)
+      .catch(() => {
+        if (controller.signal.aborted) return
+        setCatalogStatus('error')
+        setCatalogError('Cannot reach the API.')
+      })
+    return () => controller.abort()
+  }, [setAuth, setCatalogError, setCatalogStatus])
+
+  useEffect(() => {
+    if (signedInUserId === null) return
     const controller = new AbortController()
     setCatalogStatus('loading')
     setCatalogError(null)
@@ -59,7 +75,7 @@ function App() {
       })
 
     return () => controller.abort()
-  }, [setCatalog, setCatalogError, setCatalogStatus])
+  }, [signedInUserId, setCatalog, setCatalogError, setCatalogStatus])
 
   useEffect(() => {
     const column = columnRef.current
@@ -105,17 +121,24 @@ function App() {
         <span className="font-mono text-xs text-ink-muted">
           {catalogStatus === 'ready'
             ? `${catalog.length} tracks in library`
-            : 'connecting to library…'}
+            : catalogStatus === 'loading'
+              ? 'connecting to library…'
+              : signedInUserId === null
+                ? 'sign in to load your library'
+                : ''}
         </span>
-        {catalogStatus === 'error' && (
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-rose-500">
-            <TriangleAlert className="size-3.5" />
-            {catalogError} — start the API with{' '}
-            <code className="text-rose-600">
-              python -m uvicorn api.main:app --port 8000
-            </code>
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-3">
+          {catalogStatus === 'error' && (
+            <span className="flex items-center gap-1.5 text-xs text-rose-500">
+              <TriangleAlert className="size-3.5" />
+              {catalogError} — start the API with{' '}
+              <code className="text-rose-600">
+                python -m uvicorn api.main:app --port 8000
+              </code>
+            </span>
+          )}
+          <AccountButton />
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">

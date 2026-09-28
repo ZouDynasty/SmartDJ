@@ -34,6 +34,15 @@ python3 -m venv .venv
 cd frontend && npm install
 ```
 
+### Google sign-in
+
+1. In the [Google Cloud console](https://console.cloud.google.com/apis/credentials), configure the OAuth consent screen, then create an **OAuth client ID** of type **Web application**.
+2. Add `http://localhost:5173` under **Authorized JavaScript origins** and `http://localhost:8000/api/auth/google/callback` under **Authorized redirect URIs**.
+3. `cp .env.example .env` (if you don't have one yet), paste the client ID and secret, and set `SESSION_SECRET`.
+4. Restart the API. A **Sign in with Google** button appears in the header.
+
+Users and sessions live in `data/app.sqlite`, separate from the library database. The API creates the tables on startup, or run `.venv/bin/python -m api.db` to create them without starting the server. Open the app at `localhost`, not `127.0.0.1`: the session cookie belongs to `localhost`, and Google only accepts the exact redirect URI you registered.
+
 A library database should already exist at `data/library.sqlite`. If it is missing, ingest a Rekordbox XML export first (see below) — the UI will show `missing-database` until that file is present.
 
 ## Refresh the library

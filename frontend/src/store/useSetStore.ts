@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { resolveNowNext } from '@/lib/setMath'
 import { loadSavedSets, persistSavedSets } from '@/lib/savedSets'
 import type {
+  AuthStatus,
   MetricView,
   SavedSet,
   SetItem,
@@ -56,6 +57,9 @@ function clampZoom(zoom: number): number {
 export type HighlightSource = 'graph' | 'queue' | null
 
 interface SetStore {
+  /** Null until `/auth/me` answers. The library is only fetched once signed in. */
+  auth: AuthStatus | null
+
   /** Full library catalog backing the bottom table. */
   catalog: Track[]
   catalogStatus: 'idle' | 'loading' | 'ready' | 'error'
@@ -84,6 +88,10 @@ interface SetStore {
   sortField: SortField
   sortDirection: SortDirection
   genreFilters: string[]
+
+  setAuth: (auth: AuthStatus) => void
+  /** Drop everything loaded from the library, e.g. on sign-out. */
+  clearLibrary: () => void
 
   setCatalog: (tracks: Track[]) => void
   setCatalogStatus: (status: SetStore['catalogStatus']) => void
@@ -128,6 +136,8 @@ interface SetStore {
 }
 
 export const useSetStore = create<SetStore>()((set) => ({
+  auth: null,
+
   catalog: [],
   catalogStatus: 'idle',
   catalogError: null,
@@ -149,6 +159,21 @@ export const useSetStore = create<SetStore>()((set) => ({
   sortField: 'title',
   sortDirection: 'asc',
   genreFilters: [],
+
+  setAuth: (auth) => set({ auth }),
+  clearLibrary: () =>
+    set({
+      catalog: [],
+      catalogStatus: 'idle',
+      catalogError: null,
+      activeQueue: [],
+      loadedSetId: null,
+      selectedTrack: null,
+      highlightedInstanceId: null,
+      highlightSource: null,
+      playingTrack: null,
+      isPlaying: false,
+    }),
 
   setCatalog: (tracks) =>
     set((state) => {
