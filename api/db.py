@@ -143,14 +143,23 @@ def create_session(connection: sqlite3.Connection, user_id: int) -> str:
     return token
 
 
-def fetch_session_user(connection: sqlite3.Connection, token: str) -> dict[str, Any] | None:
+def session_key(token: str) -> str:
+    """Stable id for a session that is safe to hand to the browser (not the token)."""
+    return _hash_token(token)
+
+
+def fetch_user_by_session_key(connection: sqlite3.Connection, key: str) -> dict[str, Any] | None:
     row = connection.execute(
         f"SELECT {', '.join('u.' + column for column in USER_COLUMNS)} "
         "FROM sessions s JOIN users u ON u.id = s.user_id "
         "WHERE s.token_hash = ? AND s.expires_at > datetime('now')",
-        (_hash_token(token),),
+        (key,),
     ).fetchone()
     return _row_to_user(row) if row is not None else None
+
+
+def fetch_session_user(connection: sqlite3.Connection, token: str) -> dict[str, Any] | None:
+    return fetch_user_by_session_key(connection, session_key(token))
 
 
 def delete_session(connection: sqlite3.Connection, token: str) -> None:

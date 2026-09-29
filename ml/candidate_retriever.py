@@ -2,6 +2,7 @@ import sqlite3
 from collections.abc import Collection
 from typing import Any, Optional
 
+import config
 import distance
  
 class CandidateRetriver:
@@ -28,8 +29,8 @@ class CandidateRetriver:
     def retrieve_candidates(
         self,
         track_id: int,
-        limit = 100,
-        max_bpm_tolerance = 0.10,
+        limit = config.CANDIDATE_LIMIT,
+        max_bpm_tolerance = config.MAX_BPM_TOLERANCE,
         genres: Optional[Collection[str]] = None,
         always_include: Collection[int] = (),
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -75,8 +76,8 @@ class CandidateRetriver:
             AND trim(camelot_key) != ''
             AND bpm IS NOT NULL
             {genre_clause}
-            AND KEY_DISTANCE(?, camelot_key) <= 1.0/7.0
-            AND BPM_DISTANCE(?, bpm, ?) <= 1
+            AND KEY_DISTANCE(?, camelot_key) <= ?
+            AND BPM_DISTANCE(?, bpm, ?) <= ?
             AND id != ?
             LIMIT ?
             """
@@ -84,8 +85,10 @@ class CandidateRetriver:
             params = (
                 *genre_params,
                 current_key,
+                config.MAX_KEY_DISTANCE,
                 current_bpm,
                 max_bpm_tolerance,
+                config.MAX_NORMALIZED_BPM_DISTANCE,
                 current_track["id"],
                 limit,
             )

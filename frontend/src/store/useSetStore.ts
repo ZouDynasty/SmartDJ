@@ -363,7 +363,11 @@ export const useSetStore = create<SetStore>()((set) => ({
   setMetricView: (view) => set({ metricView: view }),
 
   setSearchQuery: (query) => set({ searchQuery: query }),
-  setSortField: (field) => set({ sortField: field, sortDirection: 'asc' }),
+  setSortField: (field) =>
+    set({
+      sortField: field,
+      sortDirection: field === 'compatibility' ? 'desc' : 'asc',
+    }),
   setSortDirection: (direction) => set({ sortDirection: direction }),
   toggleSortDirection: () =>
     set((state) => ({

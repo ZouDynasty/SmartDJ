@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Any
 
+import config
 from distance import (
     get_bpm_distance,
     get_energy_distance,
@@ -36,7 +37,7 @@ class Features:
             key_score = get_key_distance(current_key, candidate_key)
             
             if current_energy is None or candidate_energy is None:
-                energy_score = 0.0
+                energy_score = config.MISSING_ENERGY_FEATURE
             else:
                 energy_score = get_energy_distance(current_energy, candidate_energy)
             genre_score = get_genre_distance(current_genre, candidate_genre)

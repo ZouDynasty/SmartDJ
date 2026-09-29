@@ -22,6 +22,7 @@ export function AudioPlayer() {
   const isPlaying = useSetStore((state) => state.isPlaying)
   const setIsPlaying = useSetStore((state) => state.setIsPlaying)
   const stopPlayback = useSetStore((state) => state.stopPlayback)
+  const mediaToken = useSetStore((state) => state.auth?.media_token ?? null)
 
   const audioRef = useRef<HTMLAudioElement>(null)
   const [position, setPosition] = useState(0)
@@ -75,7 +76,7 @@ export function AudioPlayer() {
     <footer className="flex shrink-0 items-center gap-4 bg-theme px-4 py-2.5">
       <audio
         ref={audioRef}
-        src={trackAudioUrl(playingTrack.track_id)}
+        src={trackAudioUrl(playingTrack.track_id, mediaToken)}
         preload="metadata"
         onLoadedMetadata={(event) =>
           setDuration(event.currentTarget.duration || 0)

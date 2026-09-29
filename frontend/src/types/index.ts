@@ -117,12 +117,37 @@ export interface AuthUser {
 export interface AuthStatus {
   configured: boolean
   user: AuthUser | null
+  /** Appended to audio URLs, since `<audio>` may be requested without cookies. */
+  media_token: string | null
 }
 
 /** Which metric lines the set trajectory graph renders. */
 export type MetricView = 'all' | 'bpm' | 'energy' | 'key'
 
 /** Catalog sort field exposed by the "Select by" dropdown. */
-export type SortField = 'title' | 'artist' | 'genre' | 'bpm' | 'key' | 'energy' | 'rating'
+export type SortField =
+  | 'title'
+  | 'artist'
+  | 'genre'
+  | 'bpm'
+  | 'key'
+  | 'energy'
+  | 'rating'
+  | 'compatibility'
+
+/** One ranked candidate from `/compatible`; every distance is 0 (same) to 1. */
+export interface CompatibilityScore {
+  track_id: number
+  compatibility: number
+  bpm_distance: number
+  key_distance: number
+  energy_distance: number
+  genre_distance: number
+}
+
+export interface CompatibilityRanking {
+  track_id: number
+  results: CompatibilityScore[]
+}
 
 export type SortDirection = 'asc' | 'desc'

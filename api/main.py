@@ -31,6 +31,7 @@ from api.library import (
     fetch_internal_id,
     fetch_playlists,
     fetch_track,
+    fetch_track_ids_by_internal_ids,
     fetch_tracks,
     fetch_tracks_by_internal_ids,
 )
@@ -40,6 +41,7 @@ if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
 from candidate_retriever import CandidateRetriver
+from compatible_ranking import compatibility_ranking
 from nearest_path import Nearest_Path
 
 DB_PATH = Path(os.environ.get("SMARTDJ_DB", DEFAULT_DB_PATH)).expanduser()
@@ -192,6 +194,34 @@ def _require_mixable(track: dict[str, Any], role: str) -> None:
         )
 
 
+@app.get("/api/compatible", dependencies=SIGNED_IN)
+def compatible_tracks(
+    track_id: int = Query(..., description="Rekordbox track_id to rank against"),
+    connection: sqlite3.Connection = Depends(get_connection),
+) -> dict[str, Any]:
+    """Every key- and BPM-compatible track with a 0-1 compatibility score, best first."""
+    seed = fetch_track(connection, track_id)
+    if seed is None:
+        raise HTTPException(status_code=404, detail=f"Unknown track_id {track_id}")
+    _require_mixable(seed, "Track")
+
+    seed_pk = fetch_internal_id(connection, track_id)
+    if seed_pk is None:
+        raise HTTPException(status_code=404, detail="Track is missing from the library")
+
+    ranked = compatibility_ranking(CandidateRetriver(str(DB_PATH)), seed_pk).rank()
+    track_ids = fetch_track_ids_by_internal_ids(connection, [row["id"] for row in ranked])
+
+    results = []
+    for row in ranked:
+        candidate_track_id = track_ids.get(row["id"])
+        if candidate_track_id is None:
+            continue
+        entry = {key: value for key, value in row.items() if key != "id"}
+        results.append({"track_id": candidate_track_id, **entry})
+    return {"track_id": track_id, "results": results}
+
+
 @app.get("/api/mix-path", dependencies=SIGNED_IN)
 def mix_path(
     start_id: int = Query(..., description="Rekordbox track_id of the opener"),
@@ -314,7 +344,7 @@ def _iter_file(path: Path, start: int, length: int) -> Iterator[bytes]:
             yield chunk
 
 
-@app.get("/api/tracks/{track_id}/audio", dependencies=SIGNED_IN)
+@app.get("/api/tracks/{track_id}/audio", dependencies=[Depends(auth.require_media_user)])
 def stream_track_audio(
     track_id: int,
     range_header: str | None = Header(default=None, alias="Range"),

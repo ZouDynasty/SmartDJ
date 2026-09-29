@@ -19,8 +19,9 @@ from urllib.parse import urlencode
 
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from dotenv import load_dotenv
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from api.db import (
     SESSION_DAYS,
@@ -28,6 +29,8 @@ from api.db import (
     create_session,
     delete_session,
     fetch_session_user,
+    fetch_user_by_session_key,
+    session_key,
     upsert_google_user,
 )
 
@@ -86,6 +89,37 @@ def require_user(user: dict[str, Any] | None = Depends(current_user)) -> dict[st
     return user
 
 
+#: Some browsers (notably Safari) load <audio> without cookies, so media URLs
+#: carry a signed copy of the session key instead. Signing out deletes the
+#: session, which invalidates its tokens too.
+MEDIA_TOKEN_MAX_AGE = 12 * 60 * 60
+_media_signer = URLSafeTimedSerializer(SESSION_SECRET, salt="smartdj-media")
+
+
+def media_token(session_token: str) -> str:
+    return _media_signer.dumps(session_key(session_token))
+
+
+def require_media_user(
+    token: str | None = Query(default=None),
+    user: dict[str, Any] | None = Depends(current_user),
+    connection: sqlite3.Connection = Depends(get_app_connection),
+) -> dict[str, Any]:
+    """Cookie session, or a ``?token=`` from ``/auth/me`` for media elements."""
+    if user is not None:
+        return user
+    if token:
+        try:
+            key = _media_signer.loads(token, max_age=MEDIA_TOKEN_MAX_AGE)
+        except BadSignature:
+            key = None
+        if isinstance(key, str):
+            token_user = fetch_user_by_session_key(connection, key)
+            if token_user is not None:
+                return token_user
+    raise HTTPException(status_code=401, detail="Sign in required")
+
+
 def _require_configured() -> None:
     if not GOOGLE_CONFIGURED:
         raise HTTPException(
@@ -142,9 +176,16 @@ async def google_callback(
 
 
 @router.get("/me")
-def me(user: dict[str, Any] | None = Depends(current_user)) -> dict[str, Any]:
+def me(
+    user: dict[str, Any] | None = Depends(current_user),
+    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict[str, Any]:
     """Signed-in user, or ``null``. Always 200 so the UI can render either state."""
-    return {"configured": GOOGLE_CONFIGURED, "user": user}
+    return {
+        "configured": GOOGLE_CONFIGURED,
+        "user": user,
+        "media_token": media_token(session_token) if user and session_token else None,
+    }
 
 
 @router.post("/logout", status_code=204)

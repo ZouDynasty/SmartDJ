@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   ChevronDown,
@@ -12,10 +12,13 @@ import {
   Star,
   X,
 } from 'lucide-react'
+import { getCompatible } from '@/lib/api'
 import { endTrackDrag, setTrackDragData } from '@/lib/dragTrack'
 import {
+  BASE_COLUMNS,
   DEFAULT_COLUMN_WIDTHS,
   clampColumnWidth,
+  columnDividerOffsets,
   columnGridTemplate,
   columnMinTableWidth,
   loadColumnWidths,
@@ -28,7 +31,6 @@ import {
   camelotIndex,
   camelotRelation,
   formatDuration,
-  isMixCompatible,
   normalizedEnergy,
   trackArtist,
   trackBpm,
@@ -39,22 +41,51 @@ import {
   trackTitle,
 } from '@/lib/setMath'
 import { useSetStore } from '@/store/useSetStore'
-import type { SortDirection, SortField, Track } from '@/types'
+import type {
+  CompatibilityScore,
+  SortDirection,
+  SortField,
+  Track,
+} from '@/types'
 
 const ROW_HEIGHT = 44
 const MAX_GENRE_TAGS = 16
 
-const HEADER_COLUMNS: {
+type CompatibilityScores = Map<number, CompatibilityScore>
+
+interface HeaderColumn {
   field: LibraryColumn & SortField
   label: string
-  align?: 'left' | 'right'
-}[] = [
+}
+
+/** Only shown while "Show compatible" is on. */
+const COMPATIBILITY_COLUMN: HeaderColumn = {
+  field: 'compatibility',
+  label: 'Compatibility',
+}
+
+const COMPATIBILITY_COLUMNS: LibraryColumn[] = [...BASE_COLUMNS, 'compatibility']
+
+function compatibilityBreakdown(score: CompatibilityScore): string {
+  const part = (label: string, value: number) => `${label} ${value.toFixed(2)}`
+  return [
+    `Compatibility ${score.compatibility.toFixed(2)} — differences (0 = identical):`,
+    [
+      part('BPM', score.bpm_distance),
+      part('Key', score.key_distance),
+      part('Energy', score.energy_distance),
+      part('Genre', score.genre_distance),
+    ].join(' · '),
+  ].join('\n')
+}
+
+const HEADER_COLUMNS: HeaderColumn[] = [
   { field: 'title', label: 'Title' },
   { field: 'artist', label: 'Artist' },
   { field: 'genre', label: 'Genre' },
-  { field: 'bpm', label: 'BPM', align: 'right' },
-  { field: 'key', label: 'Key', align: 'right' },
-  { field: 'energy', label: 'Energy', align: 'right' },
+  { field: 'bpm', label: 'BPM' },
+  { field: 'key', label: 'Key' },
+  { field: 'energy', label: 'Energy' },
   { field: 'rating', label: 'Rating' },
 ]
 
@@ -73,8 +104,18 @@ function compareText(a: string | null, b: string | null): number {
   return a.localeCompare(b, undefined, { sensitivity: 'base' })
 }
 
-function compareTracks(a: Track, b: Track, field: SortField): number {
+function compareTracks(
+  a: Track,
+  b: Track,
+  field: SortField,
+  scores: CompatibilityScores | null,
+): number {
   switch (field) {
+    case 'compatibility':
+      return compareNumeric(
+        scores?.get(a.track_id)?.compatibility ?? null,
+        scores?.get(b.track_id)?.compatibility ?? null,
+      )
     case 'title':
       return compareText(trackTitle(a), trackTitle(b))
     case 'artist':
@@ -100,14 +141,12 @@ function SortHeading({
   label,
   active,
   direction,
-  align = 'left',
   onSort,
 }: {
   field: SortField
   label: string
   active: boolean
   direction: SortDirection
-  align?: 'left' | 'right'
   onSort: (field: SortField) => void
 }) {
   return (
@@ -121,7 +160,6 @@ function SortHeading({
       }
       className={cn(
         'flex items-center gap-0.5 uppercase tracking-wider transition-colors',
-        align === 'right' && 'w-full justify-end',
         active ? 'text-ink' : 'hover:text-ink',
       )}
     >
@@ -186,7 +224,7 @@ function ColumnResizer({
         window.addEventListener('pointerup', onUp)
         window.addEventListener('pointercancel', onUp)
       }}
-      className="group absolute -inset-y-2 -right-[7px] z-10 flex w-2.5 cursor-col-resize touch-none select-none justify-center"
+      className="group absolute -inset-y-2 -right-[13px] z-10 flex w-2.5 cursor-col-resize touch-none select-none justify-center"
     >
       <span className="h-full w-px bg-line transition-colors group-hover:w-0.5 group-hover:bg-accent group-active:w-0.5 group-active:bg-accent" />
     </span>
@@ -230,8 +268,6 @@ export function TrackLibrary() {
   const playTrack = useSetStore((state) => state.playTrack)
   const playingTrack = useSetStore((state) => state.playingTrack)
   const isPlaying = useSetStore((state) => state.isPlaying)
-  const activeQueue = useSetStore((state) => state.activeQueue)
-
   const scrollRef = useRef<HTMLDivElement>(null)
   const headerScrollRef = useRef<HTMLDivElement>(null)
   const [draggingTrackId, setDraggingTrackId] = useState<number | null>(null)
@@ -240,45 +276,92 @@ export function TrackLibrary() {
   /** Latest widths, readable synchronously when a drag or reset ends. */
   const columnWidthsRef = useRef(columnWidths)
 
+  const [showCompatible, setShowCompatible] = useState(false)
+
+  /** Only the selected track can seed the ranking, and it needs a BPM and key. */
+  const compatibleSeed = useMemo(() => {
+    if (!selectedTrack || trackBpm(selectedTrack) === null) return null
+    const relation = camelotRelation(trackKey(selectedTrack), trackKey(selectedTrack))
+    return relation === null ? null : selectedTrack
+  }, [selectedTrack])
+
+  const rankedSeedId =
+    showCompatible && compatibleSeed ? compatibleSeed.track_id : null
+  const showRanking = rankedSeedId !== null
+
+  const [ranking, setRanking] = useState<{
+    seedId: number
+    scores: CompatibilityScores
+  } | null>(null)
+  const [rankingError, setRankingError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (rankedSeedId === null) return
+    const controller = new AbortController()
+    setRankingError(null)
+    getCompatible(rankedSeedId, controller.signal)
+      .then((response) => {
+        setRanking({
+          seedId: response.track_id,
+          scores: new Map(response.results.map((row) => [row.track_id, row])),
+        })
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        setRankingError(
+          error instanceof Error ? error.message : 'Failed to rank compatible tracks.',
+        )
+      })
+    return () => controller.abort()
+  }, [rankedSeedId])
+
+  const scores =
+    ranking !== null && ranking.seedId === rankedSeedId ? ranking.scores : null
+  const rankingLoading = showRanking && scores === null && rankingError === null
+
+  /** Compatibility sorting only means something while the column is shown. */
+  const activeSortField: SortField =
+    sortField === 'compatibility' && !showRanking ? 'title' : sortField
+
+  const visibleColumns = showRanking ? COMPATIBILITY_COLUMNS : BASE_COLUMNS
+  const headerColumns = showRanking
+    ? [...HEADER_COLUMNS, COMPATIBILITY_COLUMN]
+    : HEADER_COLUMNS
+
   const gridStyle = useMemo(
     () => ({
-      gridTemplateColumns: columnGridTemplate(columnWidths),
-      minWidth: columnMinTableWidth(columnWidths),
+      gridTemplateColumns: columnGridTemplate(columnWidths, visibleColumns),
+      minWidth: columnMinTableWidth(columnWidths, visibleColumns),
     }),
-    [columnWidths],
+    [columnWidths, visibleColumns],
+  )
+  const dividerOffsets = useMemo(
+    () => columnDividerOffsets(columnWidths, visibleColumns),
+    [columnWidths, visibleColumns],
   )
 
   const handleColumnResize = useCallback(
     (column: LibraryColumn, width: number) => {
       const current = columnWidthsRef.current
-      const clamped = clampColumnWidth(column, width)
+      let clamped = clampColumnWidth(column, width)
+      const viewportWidth = scrollRef.current?.clientWidth
+      if (viewportWidth !== undefined && clamped > current[column]) {
+        // Only grow into free space so the Add column stays on screen.
+        const freeSpace =
+          viewportWidth - columnMinTableWidth(current, visibleColumns)
+        clamped = Math.min(clamped, current[column] + Math.max(freeSpace, 0))
+      }
       if (current[column] === clamped) return
       const next = { ...current, [column]: clamped }
       columnWidthsRef.current = next
       setColumnWidths(next)
     },
-    [],
+    [visibleColumns],
   )
 
   const handleColumnResizeEnd = useCallback(() => {
     persistColumnWidths(columnWidthsRef.current)
   }, [])
-  const [showCompatible, setShowCompatible] = useState(false)
-
-  const compatibleSeed = useMemo(() => {
-    const candidates = [
-      playingTrack,
-      selectedTrack,
-      activeQueue.at(-1)?.track ?? null,
-    ]
-    return (
-      candidates.find((track) => {
-        if (!track || trackBpm(track) === null) return false
-        const relation = camelotRelation(trackKey(track), trackKey(track))
-        return relation !== null
-      }) ?? null
-    )
-  }, [activeQueue, playingTrack, selectedTrack])
 
   /** Most common genres first so the tag row stays useful on big libraries. */
   const genreOptions = useMemo(() => {
@@ -301,10 +384,7 @@ export function TrackLibrary() {
         const genre = trackGenre(track)
         if (!genre || !genres.has(genre)) return false
       }
-      if (showCompatible && compatibleSeed) {
-        if (track.track_id === compatibleSeed.track_id) return false
-        if (!isMixCompatible(compatibleSeed, track)) return false
-      }
+      if (showRanking && !scores?.has(track.track_id)) return false
       if (needle.length === 0) return true
       return (
         trackTitle(track).toLowerCase().includes(needle) ||
@@ -312,15 +392,17 @@ export function TrackLibrary() {
       )
     })
     const factor = sortDirection === 'asc' ? 1 : -1
-    return filtered.sort((a, b) => factor * compareTracks(a, b, sortField))
+    return filtered.sort(
+      (a, b) => factor * compareTracks(a, b, activeSortField, scores),
+    )
   }, [
+    activeSortField,
     catalog,
-    compatibleSeed,
     genreFilters,
+    scores,
     searchQuery,
-    showCompatible,
+    showRanking,
     sortDirection,
-    sortField,
   ])
 
   const virtualizer = useVirtualizer({
@@ -332,10 +414,10 @@ export function TrackLibrary() {
 
   const handleSort = useCallback(
     (field: SortField) => {
-      if (field === sortField) toggleSortDirection()
+      if (field === activeSortField) toggleSortDirection()
       else setSortField(field)
     },
-    [setSortField, sortField, toggleSortDirection],
+    [activeSortField, setSortField, toggleSortDirection],
   )
 
   const handleAdd = useCallback(
@@ -421,10 +503,16 @@ export function TrackLibrary() {
               disabled={!compatibleSeed}
               title={
                 compatibleSeed
-                  ? `Show tracks that mix with ${trackTitle(compatibleSeed)} — same or adjacent Camelot, BPM within 10%`
-                  : 'Select or play a track with BPM and key first'
+                  ? `Rank tracks that mix with ${trackTitle(compatibleSeed)} — same or adjacent Camelot, BPM within 10%`
+                  : selectedTrack
+                    ? 'The selected track needs a BPM and key to find compatible tracks'
+                    : 'Select a track first'
               }
-              onClick={() => setShowCompatible((current) => !current)}
+              onClick={() => {
+                const next = !showCompatible
+                setShowCompatible(next)
+                if (next) setSortField('compatibility')
+              }}
               className={cn(
                 'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-tight transition-colors',
                 showCompatible && compatibleSeed
@@ -447,18 +535,17 @@ export function TrackLibrary() {
           className="shrink-0 overflow-hidden border-b border-line bg-raised"
         >
           <div
-            className="grid items-center gap-2 px-3 py-2 text-xs font-medium uppercase tracking-wider text-ink-muted"
+            className="grid items-center gap-4 px-3 py-2 text-xs font-medium uppercase tracking-wider text-ink-muted"
             style={gridStyle}
           >
             <span />
-            {HEADER_COLUMNS.map(({ field, label, align }) => (
+            {headerColumns.map(({ field, label }) => (
               <div key={field} className="relative flex min-w-0 items-center">
                 <SortHeading
                   field={field}
                   label={label}
-                  active={sortField === field}
+                  active={activeSortField === field}
                   direction={sortDirection}
-                  align={align}
                   onSort={handleSort}
                 />
                 <ColumnResizer
@@ -496,7 +583,18 @@ export function TrackLibrary() {
               {catalogError ?? 'Failed to load the catalog.'}
             </p>
           )}
-          {catalogStatus === 'ready' && visibleTracks.length === 0 && (
+          {catalogStatus === 'ready' && rankingLoading && (
+            <p className="px-3 py-6 text-sm text-ink-muted">
+              Ranking compatible tracks…
+            </p>
+          )}
+          {catalogStatus === 'ready' && showRanking && rankingError && (
+            <p className="px-3 py-6 text-sm text-rose-500">{rankingError}</p>
+          )}
+          {catalogStatus === 'ready' &&
+            !rankingLoading &&
+            !(showRanking && rankingError) &&
+            visibleTracks.length === 0 && (
             <p className="px-3 py-6 text-sm text-ink-muted">
               No tracks match the current filters.
             </p>
@@ -513,6 +611,7 @@ export function TrackLibrary() {
               const track = visibleTracks[virtualRow.index]
               const energy = normalizedEnergy(track)
               const bpm = trackBpm(track)
+              const score = scores?.get(track.track_id) ?? null
               const isSelected = selectedTrack?.id === track.id
               const isPlayingRow =
                 isPlaying && playingTrack?.track_id === track.track_id
@@ -522,7 +621,8 @@ export function TrackLibrary() {
                   draggable
                   onDragStart={(event) => {
                     setTrackDragData(event.dataTransfer, track)
-                    setSelectedTrack(track)
+                    // Reselecting would re-seed the ranking and unmount this row mid-drag.
+                    if (!showRanking) setSelectedTrack(track)
                     setDraggingTrackId(track.track_id)
                   }}
                   onDragEnd={() => {
@@ -541,7 +641,7 @@ export function TrackLibrary() {
                     gridTemplateColumns: gridStyle.gridTemplateColumns,
                   }}
                   className={cn(
-                    'grid cursor-grab items-center gap-2 border-b border-line/50 px-3 active:cursor-grabbing',
+                    'grid cursor-grab items-center gap-4 border-b border-line/50 px-3 active:cursor-grabbing',
                     draggingTrackId === track.track_id
                       ? 'border border-dashed border-accent bg-transparent opacity-40'
                       : isSelected
@@ -549,6 +649,14 @@ export function TrackLibrary() {
                         : 'odd:bg-raised/70 hover:bg-raised',
                   )}
                 >
+                  {dividerOffsets.map((left) => (
+                    <span
+                      key={left}
+                      aria-hidden
+                      className="pointer-events-none absolute top-0 -bottom-px w-px -translate-x-1/2 bg-line"
+                      style={{ left }}
+                    />
+                  ))}
                   <button
                     type="button"
                     aria-label={`Play ${trackTitle(track)}`}
@@ -601,6 +709,22 @@ export function TrackLibrary() {
                     </span>
                   </span>
                   <RatingStars rating={trackRating(track)} />
+                  {showRanking && (
+                    <span
+                      className="flex min-w-0 items-center justify-end gap-1.5 overflow-hidden"
+                      title={score ? compatibilityBreakdown(score) : undefined}
+                    >
+                      <span className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-canvas">
+                        <span
+                          className="block h-full rounded-full bg-ink"
+                          style={{ width: `${(score?.compatibility ?? 0) * 100}%` }}
+                        />
+                      </span>
+                      <span className="font-mono text-xs text-ink">
+                        {score === null ? '—' : score.compatibility.toFixed(2)}
+                      </span>
+                    </span>
+                  )}
                   <span />
                   <span className="flex justify-end">
                     <button

@@ -164,6 +164,21 @@ def fetch_tracks_by_internal_ids(
     return [by_pk[pk] for pk in internal_ids if pk in by_pk]
 
 
+def fetch_track_ids_by_internal_ids(
+    connection: sqlite3.Connection,
+    internal_ids: list[int],
+) -> dict[int, int]:
+    """Map SQLite primary keys from the ML layer back to Rekordbox ``track_id``s."""
+    if not internal_ids:
+        return {}
+    placeholders = ",".join("?" * len(internal_ids))
+    rows = connection.execute(
+        f"SELECT id, track_id FROM tracks WHERE id IN ({placeholders})",
+        internal_ids,
+    ).fetchall()
+    return {int(row["id"]): int(row["track_id"]) for row in rows}
+
+
 def fetch_track(connection: sqlite3.Connection, track_id: int) -> dict[str, Any] | None:
     """Full detail for one track, including the dense beatgrid."""
     row = connection.execute(

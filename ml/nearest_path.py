@@ -2,25 +2,18 @@ import heapq
 from collections.abc import Collection
 from typing import Optional
 
+import config
 from candidate_retriever import CandidateRetriver
 from distance import get_genre_distance, get_key_distance, overall_distance
-
-#: Labeling uses a tight LIMIT; the search needs the full compatible neighborhood
-#: or the only bridge to the goal can be hidden.
-CANDIDATE_LIMIT = 1000
-
-#: Per-dimension multiplier for a hop that moves toward (or away from) the goal.
-TOWARD_GOAL = 0.9
-AWAY_FROM_GOAL = 1 / TOWARD_GOAL
 
 
 def _steer(current_gap: Optional[float], candidate_gap: Optional[float]) -> float:
     if current_gap is None or candidate_gap is None:
         return 1.0
     if candidate_gap < current_gap:
-        return TOWARD_GOAL
+        return config.TOWARD_GOAL_MULTIPLIER
     if candidate_gap > current_gap:
-        return AWAY_FROM_GOAL
+        return config.AWAY_FROM_GOAL_MULTIPLIER
     return 1.0
 
 
@@ -30,7 +23,7 @@ class Nearest_Path:
         retriever: CandidateRetriver,
         start_id: int,
         goal_id: int,
-        maximum_hops: int = 30,
+        maximum_hops: int = config.PATH_MAX_HOPS,
         genres: Optional[Collection[str]] = None,
     ):
         self.retriever = retriever
@@ -61,7 +54,7 @@ class Nearest_Path:
         try:
             _current, candidates = self.retriever.retrieve_candidates(
                 track_id,
-                limit=CANDIDATE_LIMIT,
+                limit=config.PATH_CANDIDATE_LIMIT,
                 genres=self.genres,
                 always_include=(self.goal_id,),
             )

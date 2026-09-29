@@ -1,9 +1,10 @@
+import config
 from genre_similarity import MACRO_GENRES, GENRE_LOOKUP
 
-def get_bpm_distance(bpm_a, bpm_b, max_tolerance = 0.10):
+def get_bpm_distance(bpm_a, bpm_b, max_tolerance = config.MAX_BPM_TOLERANCE):
     direct_dist = abs(bpm_a - bpm_b) / bpm_a
-    double_time_dist = abs(bpm_a - 2 * bpm_b) / bpm_a
-    half_time_dist = abs(bpm_a - 0.5 * bpm_b) / bpm_a
+    double_time_dist = abs(bpm_a - config.DOUBLE_TIME_RATIO * bpm_b) / bpm_a
+    half_time_dist = abs(bpm_a - config.HALF_TIME_RATIO * bpm_b) / bpm_a
 
     best_delta = min(direct_dist, double_time_dist, half_time_dist)
 
@@ -19,17 +20,17 @@ def get_key_distance(key_a, key_b):
     number_b = int(key_b[:-1])
     mode_b = key_b[-1].upper()
 
+    wheel = config.CAMELOT_WHEEL_SIZE
     if (mode_a == mode_b):
-        dist = min(abs(number_b - number_a), 12 - abs(number_b - number_a))
+        dist = min(abs(number_b - number_a), wheel - abs(number_b - number_a))
     else:
-        dist = min(abs(number_b - number_a), 12 - abs(number_b - number_a)) + 1
+        dist = min(abs(number_b - number_a), wheel - abs(number_b - number_a)) + config.KEY_MODE_CHANGE_PENALTY
     
-    return dist / 7
+    return dist / config.KEY_DISTANCE_NORMALIZER
 
 def get_energy_distance(energy_a, energy_b):
-    # energy_score spans 0-10, so the largest possible delta is 10.
     # Signed on purpose: the sign says whether the mix lifts or drops.
-    return (energy_a - energy_b) / 10
+    return (energy_a - energy_b) / config.ENERGY_SCALE
 
 def get_genre_distance(genre_a, genre_b):
     if (
@@ -38,20 +39,12 @@ def get_genre_distance(genre_a, genre_b):
         or genre_a not in MACRO_GENRES
         or genre_b not in MACRO_GENRES
     ):
-        return 0.5
+        return config.UNKNOWN_GENRE_SIMILARITY
 
     if (genre_a == genre_b):
-        return 1.0
+        return config.SAME_GENRE_SIMILARITY
 
     return GENRE_LOOKUP[(genre_a, genre_b)]
-
-BPM_WEIGHT = 0.4
-ENERGY_WEIGHT = 0.2
-GENRE_WEIGHT = 0.4
-
-#: Unknown energy is priced like an unknown genre (0.5) so unanalyzed tracks
-#: are not free bridges.
-MISSING_ENERGY_COST = 0.5
 
 
 def overall_distance(track_a, track_b):
@@ -60,7 +53,7 @@ def overall_distance(track_a, track_b):
     energy_a = track_a.get("energy_score")
     energy_b = track_b.get("energy_score")
     if energy_a is None or energy_b is None:
-        energy_cost = MISSING_ENERGY_COST
+        energy_cost = config.MISSING_ENERGY_COST
     else:
         energy_cost = abs(get_energy_distance(energy_a, energy_b))
 
@@ -70,8 +63,7 @@ def overall_distance(track_a, track_b):
     )
 
     return (
-        BPM_WEIGHT * bpm_cost
-        + ENERGY_WEIGHT * energy_cost
-        + GENRE_WEIGHT * genre_cost
+        config.BPM_WEIGHT * bpm_cost
+        + config.ENERGY_WEIGHT * energy_cost
+        + config.GENRE_WEIGHT * genre_cost
     )
-

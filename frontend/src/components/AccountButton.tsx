@@ -127,7 +127,7 @@ export function AccountButton() {
     logout()
       .then(() => {
         clearLibrary()
-        setAuth({ ...status, user: null })
+        setAuth({ ...status, user: null, media_token: null })
       })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : 'Log out failed')

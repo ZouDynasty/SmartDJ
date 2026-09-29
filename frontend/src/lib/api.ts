@@ -1,5 +1,6 @@
 import type {
   AuthStatus,
+  CompatibilityRanking,
   MixPath,
   Playlist,
   Recommendation,
@@ -45,8 +46,10 @@ export function getTrack(trackId: number, signal?: AbortSignal): Promise<Track> 
  * Streaming URL for a track's local audio file. The server resolves the path
  * from the library's `file_path`, so the browser never sees a filesystem path.
  */
-export function trackAudioUrl(trackId: number): string {
-  return `${API_BASE}/tracks/${trackId}/audio`
+export function trackAudioUrl(trackId: number, mediaToken: string | null): string {
+  const url = `${API_BASE}/tracks/${trackId}/audio`
+  if (!mediaToken) return url
+  return `${url}?${new URLSearchParams({ token: mediaToken })}`
 }
 
 /** Album cover embedded in the track's file. 404s when there is none. */
@@ -64,6 +67,15 @@ export function getRecommendations(
 ): Promise<Recommendation[]> {
   const params = new URLSearchParams({ track_id: String(trackId) })
   return apiFetch<Recommendation[]>(`/recommendations?${params}`, { signal })
+}
+
+/** Key- and BPM-compatible tracks scored 0-1 against `trackId`, best first. */
+export function getCompatible(
+  trackId: number,
+  signal?: AbortSignal,
+): Promise<CompatibilityRanking> {
+  const params = new URLSearchParams({ track_id: String(trackId) })
+  return apiFetch<CompatibilityRanking>(`/compatible?${params}`, { signal })
 }
 
 /**

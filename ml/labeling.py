@@ -17,22 +17,12 @@ sys.path.insert(0, str(ROOT / "audio_extraction"))
 from rich.console import Console
 from rich.prompt import Prompt
 
+import config
 from candidate_retriever import CandidateRetriver
 from distance import get_bpm_distance, get_key_distance
 from extract_tags import DEFAULT_DB_PATH, connect_db
 
 console = Console()
-
-TARGET_PER_BUCKET = 2
-MIN_SAMPLE = 4
-MAX_SAMPLE = 6
-EXACT_BPM_DISTANCE = 0.05  # normalized; 0.05 == 0.5% BPM at 10% tolerance
-BOUNDARY_BPM_DISTANCE = 0.75
-#: energy_score is absolute on 0-10 (see audio_extraction/energy.py) and most
-#: tracks sit between 4 and 7. 1.4 is the 75th percentile of random pairs,
-#: keeping the "energy shift" bucket to genuinely large jumps.
-ENERGY_GAP = 1.4
-KEY_STEP = 1.0 / 7.0
 
 
 def fetch_random_seed_id(connection: sqlite3.Connection, exclude: set[int]) -> int | None:
@@ -73,15 +63,15 @@ def _annotate(seed: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]
         energy_delta = None
     else:
         energy_delta = cand_energy - seed_energy
-        energy_gap = abs(energy_delta) >= ENERGY_GAP
+        energy_gap = abs(energy_delta) >= config.LABEL_ENERGY_GAP
 
     seed_genre = seed.get("macro_genre")
     cand_genre = candidate.get("macro_genre")
     genre_shift = bool(seed_genre and cand_genre and seed_genre != cand_genre)
     same_key = key_distance <= 1e-9
-    adjacent_key = abs(key_distance - KEY_STEP) <= 1e-9
-    exact_bpm = bpm_distance <= EXACT_BPM_DISTANCE
-    boundary_bpm = bpm_distance >= BOUNDARY_BPM_DISTANCE
+    adjacent_key = abs(key_distance - config.KEY_STEP) <= 1e-9
+    exact_bpm = bpm_distance <= config.LABEL_EXACT_BPM_DISTANCE
+    boundary_bpm = bpm_distance >= config.LABEL_BOUNDARY_BPM_DISTANCE
 
     return {
         **candidate,
@@ -132,47 +122,47 @@ def sample_spread(
         picked_ids.update(row["id"] for row in chosen)
         return chosen
 
-    close_added = take_shuffled([row for row in annotated if row["close"]], TARGET_PER_BUCKET)
+    close_added = take_shuffled([row for row in annotated if row["close"]], config.LABEL_TARGET_PER_BUCKET)
     selected.extend(close_added)
-    if len(close_added) < TARGET_PER_BUCKET:
+    if len(close_added) < config.LABEL_TARGET_PER_BUCKET:
         selected.extend(
             take_sorted(
                 annotated,
-                TARGET_PER_BUCKET - len(close_added),
+                config.LABEL_TARGET_PER_BUCKET - len(close_added),
                 key=lambda row: row["bpm_distance"],
             )
         )
 
-    shift_added = take_shuffled([row for row in annotated if row["shift"]], TARGET_PER_BUCKET)
+    shift_added = take_shuffled([row for row in annotated if row["shift"]], config.LABEL_TARGET_PER_BUCKET)
     selected.extend(shift_added)
-    if len(shift_added) < TARGET_PER_BUCKET:
+    if len(shift_added) < config.LABEL_TARGET_PER_BUCKET:
         selected.extend(
             take_sorted(
                 [row for row in annotated if row["same_key"]],
-                TARGET_PER_BUCKET - len(shift_added),
+                config.LABEL_TARGET_PER_BUCKET - len(shift_added),
                 key=lambda row: abs(row["energy_delta"] or 0.0),
                 reverse=True,
             )
         )
 
     boundary_added = take_shuffled(
-        [row for row in annotated if row["boundary"]], TARGET_PER_BUCKET
+        [row for row in annotated if row["boundary"]], config.LABEL_TARGET_PER_BUCKET
     )
     selected.extend(boundary_added)
-    if len(boundary_added) < TARGET_PER_BUCKET:
+    if len(boundary_added) < config.LABEL_TARGET_PER_BUCKET:
         selected.extend(
             take_sorted(
                 annotated,
-                TARGET_PER_BUCKET - len(boundary_added),
+                config.LABEL_TARGET_PER_BUCKET - len(boundary_added),
                 key=lambda row: row["bpm_distance"],
                 reverse=True,
             )
         )
 
-    if len(selected) < MIN_SAMPLE:
-        selected.extend(take_shuffled(annotated, MIN_SAMPLE - len(selected)))
+    if len(selected) < config.LABEL_MIN_SAMPLE:
+        selected.extend(take_shuffled(annotated, config.LABEL_MIN_SAMPLE - len(selected)))
 
-    selected = selected[:MAX_SAMPLE]
+    selected = selected[:config.LABEL_MAX_SAMPLE]
     rng.shuffle(selected)
     return selected
 
@@ -289,7 +279,7 @@ def main() -> int:
                 continue
 
             sample = sample_spread(seed, pool, rng)
-            if len(sample) < MIN_SAMPLE:
+            if len(sample) < config.LABEL_MIN_SAMPLE:
                 console.print(
                     f"[dim]Skipping [{seed_id}] {_text(seed.get('title'))}: "
                     f"only {len(sample)} spread candidates[/dim]"

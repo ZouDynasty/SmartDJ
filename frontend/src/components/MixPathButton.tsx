@@ -5,13 +5,7 @@ import { cn } from '@/lib/utils'
 import { resolveNowNext, trackTitle } from '@/lib/setMath'
 import { useSetStore } from '@/store/useSetStore'
 
-export function MixPathButton({
-  stretch = false,
-  compact = false,
-}: {
-  stretch?: boolean
-  compact?: boolean
-}) {
+export function MixPathButton({ compact = false }: { compact?: boolean }) {
   const activeQueue = useSetStore((state) => state.activeQueue)
   const playingTrack = useSetStore((state) => state.playingTrack)
   const insertMixPath = useSetStore((state) => state.insertMixPath)
@@ -80,8 +74,7 @@ export function MixPathButton({
     <div
       className={cn(
         'flex min-w-0 flex-col gap-1',
-        stretch ? 'items-stretch' : 'items-center',
-        !stretch && !compact && 'items-end',
+        compact ? 'items-center' : 'items-end',
       )}
     >
       <button
@@ -94,7 +87,7 @@ export function MixPathButton({
           compact
             ? 'px-2.5 py-1 text-xs whitespace-nowrap'
             : 'px-4 py-2 text-sm',
-          stretch ? 'w-full' : 'shrink-0',
+          'shrink-0',
           status.kind === 'loading'
             ? 'border-accent bg-accent text-white shadow-sm shadow-accent/30'
             : 'border-accent bg-theme-raised text-accent hover:bg-theme',
@@ -112,10 +105,7 @@ export function MixPathButton({
       </button>
       {status.kind === 'idle' && !compact && (
         <p
-          className={cn(
-            'max-w-72 text-[11px] text-ink-faint',
-            stretch ? 'text-center' : 'text-right',
-          )}
+          className="max-w-72 text-right text-[11px] text-ink-faint"
         >
           {genreFilters.length > 0
             ? `Only mixing through ${genreFilters.join(', ')}`
@@ -126,7 +116,7 @@ export function MixPathButton({
         <p
           className={cn(
             'max-w-72 truncate text-[11px] text-ink-muted',
-            compact || stretch ? 'text-center' : 'text-right',
+            compact ? 'text-center' : 'text-right',
           )}
         >
           {status.hops}-hop path · {status.start} → {status.goal}

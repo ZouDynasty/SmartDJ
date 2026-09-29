@@ -322,7 +322,7 @@ export function SetGraph({ height }: { height: number }) {
                 yAxisId="bpm"
                 dataKey="bpm"
                 name={SERIES.bpm.label}
-                type="monotone"
+                type="linear"
                 stroke={SERIES.bpm.color}
                 strokeWidth={2}
                 strokeOpacity={isVisible('bpm') ? 1 : 0}
@@ -335,7 +335,7 @@ export function SetGraph({ height }: { height: number }) {
                 yAxisId="energy"
                 dataKey="energy"
                 name={SERIES.energy.label}
-                type="monotone"
+                type="linear"
                 stroke={SERIES.energy.color}
                 strokeWidth={2}
                 strokeOpacity={isVisible('energy') ? 1 : 0}
