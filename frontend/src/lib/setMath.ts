@@ -185,6 +185,56 @@ export function trackKey(track: Track): string | null {
   return track.camelot_key?.trim() || track.key?.trim() || null
 }
 
+/**
+ * Camelot numbers walk the circle of fifths, so +1 number is not +1 semitone.
+ * Major keys (B), indexed by pitch class with C = 0.
+ */
+const MAJOR_CAMELOT_BY_PITCH = [8, 3, 10, 5, 12, 7, 2, 9, 4, 11, 6, 1]
+
+const SPELLED_PITCH = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+const FLAT_PITCH: Record<string, number> = {
+  Db: 1,
+  Eb: 3,
+  Gb: 6,
+  Ab: 8,
+  Bb: 10,
+}
+
+function mod(value: number, modulo: number): number {
+  return ((value % modulo) + modulo) % modulo
+}
+
+function transposeCamelot(key: string, semitones: number): string | null {
+  const parts = parseCamelot(key)
+  if (!parts) return null
+  const majorPitch = MAJOR_CAMELOT_BY_PITCH.indexOf(parts.number)
+  if (majorPitch < 0) return null
+  const pitch = parts.mode === 'B' ? majorPitch : mod(majorPitch - 3, 12)
+  const shifted = mod(pitch + semitones, 12)
+  const major = parts.mode === 'B' ? shifted : mod(shifted + 3, 12)
+  return `${MAJOR_CAMELOT_BY_PITCH[major]}${parts.mode}`
+}
+
+/** Rekordbox spelled keys such as `F minor` or `C# major`. */
+function transposeSpelledKey(key: string, semitones: number): string | null {
+  const match = /^([A-G](?:#|b)?)(\s+)(minor|major)$/i.exec(key.trim())
+  if (!match) return null
+  const note = match[1]
+  const pitch = FLAT_PITCH[note] ?? SPELLED_PITCH.indexOf(note)
+  if (pitch < 0) return null
+  const quality = match[3].toLowerCase()
+  return `${SPELLED_PITCH[mod(pitch + semitones, 12)]} ${quality}`
+}
+
+/** Move a Camelot or spelled key by `semitones`. Unknown labels are unchanged. */
+export function transposeKey(key: string | null, semitones: number): string | null {
+  if (!key) return null
+  const steps = Math.trunc(semitones)
+  if (!steps) return key
+  return transposeCamelot(key, steps) ?? transposeSpelledKey(key, steps) ?? key
+}
+
 export function trackGenre(track: Track): string | null {
   return (
     track.macro_genre?.trim() ||

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { resolveNowNext } from '@/lib/setMath'
-import { loadSavedSets, persistSavedSets } from '@/lib/savedSets'
+import { deleteSavedSetRow, upsertSavedSets } from '@/lib/savedSets'
 import type {
   AuthStatus,
   MetricView,
@@ -49,6 +49,10 @@ function playingQueueIndex(state: {
   )
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 function clampZoom(zoom: number): number {
   return Math.min(Math.max(zoom, MIN_ZOOM), MAX_ZOOM)
 }
@@ -67,7 +71,10 @@ interface SetStore {
 
   /** Ordered live set. */
   activeQueue: SetItem[]
+  /** Mirror of the user's Supabase `saved_sets` rows, newest first. */
   savedSets: SavedSet[]
+  /** Last failed Supabase read or write of saved sets. */
+  savedSetsError: string | null
   /** Set last saved or loaded; null while the queue is an unnamed draft. */
   loadedSetId: string | null
   selectedTrack: Track | null
@@ -108,6 +115,8 @@ interface SetStore {
   removeSetItem: (instanceId: string) => void
   moveSetItem: (fromIndex: number, toIndex: number) => void
   clearSet: () => void
+  setSavedSets: (sets: SavedSet[]) => void
+  setSavedSetsError: (message: string | null) => void
   /** Persist the current queue under ``name``. Same name overwrites. */
   saveSet: (name: string) => void
   loadSavedSet: (id: string) => void
@@ -143,7 +152,8 @@ export const useSetStore = create<SetStore>()((set) => ({
   catalogError: null,
 
   activeQueue: [],
-  savedSets: loadSavedSets(),
+  savedSets: [],
+  savedSetsError: null,
   loadedSetId: null,
   selectedTrack: null,
   highlightedInstanceId: null,
@@ -167,6 +177,8 @@ export const useSetStore = create<SetStore>()((set) => ({
       catalogStatus: 'idle',
       catalogError: null,
       activeQueue: [],
+      savedSets: [],
+      savedSetsError: null,
       loadedSetId: null,
       selectedTrack: null,
       highlightedInstanceId: null,
@@ -290,6 +302,9 @@ export const useSetStore = create<SetStore>()((set) => ({
       highlightSource: null,
     }),
 
+  setSavedSets: (sets) => set({ savedSets: sets, savedSetsError: null }),
+  setSavedSetsError: (message) => set({ savedSetsError: message }),
+
   saveSet: (name) =>
     set((state) => {
       const trimmed = name.trim()
@@ -299,7 +314,8 @@ export const useSetStore = create<SetStore>()((set) => ({
         (entry) => entry.name.toLowerCase() === trimmed.toLowerCase(),
       )
       const record: SavedSet = {
-        id: existing?.id ?? createInstanceId(0),
+        // The `saved_sets.id` column is a UUID.
+        id: existing?.id ?? crypto.randomUUID(),
         name: trimmed,
         track_ids: trackIds,
         saved_at: new Date().toISOString(),
@@ -309,8 +325,10 @@ export const useSetStore = create<SetStore>()((set) => ({
             entry.id === existing.id ? record : entry,
           )
         : [record, ...state.savedSets]
-      persistSavedSets(savedSets)
-      return { savedSets, loadedSetId: record.id }
+      upsertSavedSets([record]).catch((error: unknown) => {
+        set({ savedSetsError: `Save failed: ${errorMessage(error)}` })
+      })
+      return { savedSets, savedSetsError: null, loadedSetId: record.id }
     }),
 
   loadSavedSet: (id) =>
@@ -328,9 +346,12 @@ export const useSetStore = create<SetStore>()((set) => ({
   deleteSavedSet: (id) =>
     set((state) => {
       const savedSets = state.savedSets.filter((entry) => entry.id !== id)
-      persistSavedSets(savedSets)
+      deleteSavedSetRow(id).catch((error: unknown) => {
+        set({ savedSetsError: `Delete failed: ${errorMessage(error)}` })
+      })
       return {
         savedSets,
+        savedSetsError: null,
         loadedSetId: state.loadedSetId === id ? null : state.loadedSetId,
       }
     }),

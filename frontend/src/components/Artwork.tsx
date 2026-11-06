@@ -1,6 +1,7 @@
 import { Disc3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { trackArtworkUrl } from '@/lib/api'
+import { useSetStore } from '@/store/useSetStore'
 
 interface ArtworkProps {
   trackId: number
@@ -16,6 +17,7 @@ interface ArtworkProps {
  * state is needed.
  */
 export function Artwork({ trackId, title, className }: ArtworkProps) {
+  const mediaToken = useSetStore((state) => state.auth?.media_token ?? null)
   return (
     <div
       role="img"
@@ -27,7 +29,7 @@ export function Artwork({ trackId, title, className }: ArtworkProps) {
     >
       <Disc3 className="absolute inset-0 m-auto size-1/2 text-ink-faint" />
       <img
-        src={trackArtworkUrl(trackId)}
+        src={trackArtworkUrl(trackId, mediaToken)}
         alt=""
         loading="lazy"
         decoding="async"

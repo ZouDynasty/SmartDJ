@@ -44,6 +44,9 @@ models/
 *.opus
 *.aac
 
+# Local snapshots of the codebase; git history already holds these versions.
+.pre-supabase-backup/
+
 # Node (frontend has its own .gitignore; this is a backstop)
 node_modules/
 

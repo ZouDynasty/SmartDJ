@@ -2,6 +2,10 @@
 tinytag>=1.10.0
 mutagen>=1.47.0
 
+# Pitch shift in the player. Also needs the rubberband CLI:
+#   brew install rubberband
+pyrubberband>=0.4.0
+
 # Audio analysis (BPM, key, energy, Discogs-EffNet genre)
 numpy>=1.24.0
 scipy>=1.11.0
@@ -18,8 +22,7 @@ rich>=13.7.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 
-# Google sign-in
-authlib>=1.8.0
-httpx2>=2.13.0
+# Supabase sign-in: token verification and signed media URLs
+PyJWT[crypto]>=2.10.0
 itsdangerous>=2.1.0
 python-dotenv>=1.0.0

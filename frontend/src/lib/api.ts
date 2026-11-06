@@ -1,3 +1,4 @@
+import { supabase } from '@/lib/supabase'
 import type {
   AuthStatus,
   CompatibilityRanking,
@@ -9,12 +10,15 @@ import type {
 
 export const API_BASE = 'http://localhost:8000/api'
 
+/** Sends the Supabase access token, which the API verifies on every request. */
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const { data } = await supabase.auth.getSession()
+  const accessToken = data.session?.access_token
   const response = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
     ...init,
     headers: {
       Accept: 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...init?.headers,
     },
   })
@@ -42,19 +46,35 @@ export function getTrack(trackId: number, signal?: AbortSignal): Promise<Track> 
   return apiFetch<Track>(`/tracks/${trackId}`, { signal })
 }
 
+/** One octave in either direction. Matches the API's `semitones` bounds. */
+export const MIN_PITCH_SEMITONES = -12
+export const MAX_PITCH_SEMITONES = 12
+
 /**
  * Streaming URL for a track's local audio file. The server resolves the path
  * from the library's `file_path`, so the browser never sees a filesystem path.
+ *
+ * A non-zero `semitones` asks the API to pitch-shift with Rubber Band first.
+ * Tempo is unchanged. `0` is the original file. `mediaToken` authorizes the
+ * request when the audio element does not send the session cookie.
  */
-export function trackAudioUrl(trackId: number, mediaToken: string | null): string {
+export function trackAudioUrl(
+  trackId: number,
+  mediaToken: string | null,
+  semitones = 0,
+): string {
+  const params = new URLSearchParams()
+  if (mediaToken) params.set('token', mediaToken)
+  if (semitones) params.set('semitones', String(semitones))
+  const query = params.toString()
   const url = `${API_BASE}/tracks/${trackId}/audio`
-  if (!mediaToken) return url
-  return `${url}?${new URLSearchParams({ token: mediaToken })}`
+  return query ? `${url}?${query}` : url
 }
 
 /** Album cover embedded in the track's file. 404s when there is none. */
-export function trackArtworkUrl(trackId: number): string {
-  return `${API_BASE}/tracks/${trackId}/artwork`
+export function trackArtworkUrl(trackId: number, mediaToken: string | null): string {
+  const url = `${API_BASE}/tracks/${trackId}/artwork`
+  return mediaToken ? `${url}?${new URLSearchParams({ token: mediaToken })}` : url
 }
 
 export function getPlaylists(signal?: AbortSignal): Promise<Playlist[]> {
@@ -96,22 +116,6 @@ export function getMixPath(
   return apiFetch<MixPath>(`/mix-path?${params}`, { signal })
 }
 
-/**
- * Full-page navigation target, not a fetch: the API redirects to Google and
- * Google redirects back to the API, which then returns to the app.
- */
-export const GOOGLE_LOGIN_URL = `${API_BASE}/auth/google/login`
-
 export function getAuthStatus(signal?: AbortSignal): Promise<AuthStatus> {
   return apiFetch<AuthStatus>('/auth/me', { signal })
-}
-
-export async function logout(): Promise<void> {
-  const response = await fetch(`${API_BASE}/auth/logout`, {
-    method: 'POST',
-    credentials: 'include',
-  })
-  if (!response.ok) {
-    throw new Error(`API ${response.status} ${response.statusText}: /auth/logout`)
-  }
 }

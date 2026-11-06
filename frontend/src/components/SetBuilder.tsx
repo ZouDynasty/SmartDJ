@@ -163,6 +163,7 @@ function SetCard({
 export function SetBuilder({ width }: { width: number }) {
   const activeQueue = useSetStore((state) => state.activeQueue)
   const savedSets = useSetStore((state) => state.savedSets)
+  const savedSetsError = useSetStore((state) => state.savedSetsError)
   const loadedSetId = useSetStore((state) => state.loadedSetId)
   const moveSetItem = useSetStore((state) => state.moveSetItem)
   const removeSetItem = useSetStore((state) => state.removeSetItem)
@@ -287,6 +288,9 @@ export function SetBuilder({ width }: { width: number }) {
             Save
           </button>
         </form>
+        {savedSetsError && (
+          <p className="text-xs text-rose-600">{savedSetsError}</p>
+        )}
         <div className="flex items-center gap-2">
           <button
             type="button"

@@ -1,86 +1,82 @@
-"""Google sign-in (OpenID Connect authorization-code flow with PKCE).
+"""Supabase sign-in for the local API.
 
-Configure through ``.env`` at the project root (see ``.env.example``). In the
-Google Cloud console the OAuth client must be a "Web application" with
-``GOOGLE_REDIRECT_URI`` listed under Authorized redirect URIs.
+The browser signs in with Supabase (Google) and sends its access token as
+``Authorization: Bearer <token>``. The token is verified here against the
+project's public signing keys, so the API holds no Supabase secret.
 
-Protect an endpoint with ``user: dict = Depends(require_user)``.
+Configure ``SUPABASE_URL`` in ``.env`` at the project root (see ``.env.example``).
+
+Protect an endpoint with ``Depends(require_user)``.
 """
 
 from __future__ import annotations
 
 import os
 import secrets
-import sqlite3
-from collections.abc import Iterator
+import ssl
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
 
-from authlib.integrations.starlette_client import OAuth, OAuthError
+import certifi
+import jwt
 from dotenv import load_dotenv
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from itsdangerous import BadSignature, URLSafeTimedSerializer
-
-from api.db import (
-    SESSION_DAYS,
-    connect_app_db,
-    create_session,
-    delete_session,
-    fetch_session_user,
-    fetch_user_by_session_key,
-    session_key,
-    upsert_google_user,
-)
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
-GOOGLE_REDIRECT_URI = os.environ.get(
-    "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback"
-).strip()
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173").strip().rstrip("/")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_ISSUER = f"{SUPABASE_URL}/auth/v1"
+SUPABASE_CONFIGURED = bool(SUPABASE_URL)
 
-#: Signs the short-lived cookie that carries OAuth state/nonce/PKCE between
-#: the login redirect and the callback. A random fallback only breaks logins
-#: that are mid-flight when the server restarts.
-SESSION_SECRET = os.environ.get("SESSION_SECRET", "").strip() or secrets.token_urlsafe(32)
-
-SESSION_COOKIE = "smartdj_session"
-OAUTH_STATE_COOKIE = "smartdj_oauth"
-COOKIE_SECURE = GOOGLE_REDIRECT_URI.startswith("https://")
-
-GOOGLE_CONFIGURED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
-
-oauth = OAuth()
-oauth.register(
-    name="google",
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile", "code_challenge_method": "S256"},
+#: Downloaded on first use and cached, so most requests verify without a
+#: network call. certifi supplies CA roots that macOS Pythons often lack.
+_signing_keys = (
+    jwt.PyJWKClient(
+        f"{SUPABASE_ISSUER}/.well-known/jwks.json",
+        ssl_context=ssl.create_default_context(cafile=certifi.where()),
+    )
+    if SUPABASE_CONFIGURED
+    else None
 )
+
+#: Signs media tokens. A random fallback only invalidates audio and artwork
+#: URLs when the server restarts; the page picks up a new one on reload.
+MEDIA_TOKEN_SECRET = os.environ.get("MEDIA_TOKEN_SECRET", "").strip() or secrets.token_urlsafe(32)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def get_app_connection() -> Iterator[sqlite3.Connection]:
-    connection = connect_app_db()
-    try:
-        yield connection
-    finally:
-        connection.close()
-
-
-def current_user(
-    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE),
-    connection: sqlite3.Connection = Depends(get_app_connection),
-) -> dict[str, Any] | None:
-    if not session_token:
+def _supabase_user(access_token: str) -> dict[str, Any] | None:
+    """The user in a valid Supabase access token, or ``None`` if any check fails."""
+    if _signing_keys is None:
         return None
-    return fetch_session_user(connection, session_token)
+    try:
+        signing_key = _signing_keys.get_signing_key_from_jwt(access_token)
+        claims = jwt.decode(
+            access_token,
+            signing_key.key,
+            algorithms=["ES256"],
+            audience="authenticated",
+            issuer=SUPABASE_ISSUER,
+            options={"require": ["exp", "sub"]},
+        )
+    except jwt.PyJWTError:
+        return None
+    metadata = claims.get("user_metadata") or {}
+    return {
+        "id": claims["sub"],
+        "email": claims.get("email") or "",
+        "name": metadata.get("full_name") or metadata.get("name"),
+        "picture_url": metadata.get("avatar_url") or metadata.get("picture"),
+    }
+
+
+def current_user(authorization: str | None = Header(default=None)) -> dict[str, Any] | None:
+    scheme, _, credentials = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not credentials:
+        return None
+    return _supabase_user(credentials)
 
 
 def require_user(user: dict[str, Any] | None = Depends(current_user)) -> dict[str, Any]:
@@ -89,112 +85,35 @@ def require_user(user: dict[str, Any] | None = Depends(current_user)) -> dict[st
     return user
 
 
-#: Some browsers (notably Safari) load <audio> without cookies, so media URLs
-#: carry a signed copy of the session key instead. Signing out deletes the
-#: session, which invalidates its tokens too.
+#: ``<audio>`` and ``<img>`` cannot send an Authorization header, so their URLs
+#: carry a signed copy of the user instead. It is not revoked by signing out,
+#: hence the short lifetime.
 MEDIA_TOKEN_MAX_AGE = 12 * 60 * 60
-_media_signer = URLSafeTimedSerializer(SESSION_SECRET, salt="smartdj-media")
-
-
-def media_token(session_token: str) -> str:
-    return _media_signer.dumps(session_key(session_token))
+_media_signer = URLSafeTimedSerializer(MEDIA_TOKEN_SECRET, salt="smartdj-media")
 
 
 def require_media_user(
     token: str | None = Query(default=None),
     user: dict[str, Any] | None = Depends(current_user),
-    connection: sqlite3.Connection = Depends(get_app_connection),
 ) -> dict[str, Any]:
-    """Cookie session, or a ``?token=`` from ``/auth/me`` for media elements."""
+    """Bearer token, or a ``?token=`` from ``/auth/me`` for media elements."""
     if user is not None:
         return user
     if token:
         try:
-            key = _media_signer.loads(token, max_age=MEDIA_TOKEN_MAX_AGE)
+            token_user = _media_signer.loads(token, max_age=MEDIA_TOKEN_MAX_AGE)
         except BadSignature:
-            key = None
-        if isinstance(key, str):
-            token_user = fetch_user_by_session_key(connection, key)
-            if token_user is not None:
-                return token_user
+            token_user = None
+        if isinstance(token_user, dict):
+            return token_user
     raise HTTPException(status_code=401, detail="Sign in required")
 
 
-def _require_configured() -> None:
-    if not GOOGLE_CONFIGURED:
-        raise HTTPException(
-            status_code=503,
-            detail="Google sign-in is not configured: set GOOGLE_CLIENT_ID and "
-            "GOOGLE_CLIENT_SECRET in .env and restart the API",
-        )
-
-
-def _frontend_redirect(**params: str) -> RedirectResponse:
-    query = f"?{urlencode(params)}" if params else ""
-    return RedirectResponse(f"{FRONTEND_URL}/{query}", status_code=303)
-
-
-@router.get("/google/login")
-async def google_login(request: Request) -> Response:
-    """Send the browser to Google's consent screen."""
-    _require_configured()
-    return await oauth.google.authorize_redirect(
-        request, GOOGLE_REDIRECT_URI, prompt="select_account"
-    )
-
-
-@router.get("/google/callback")
-async def google_callback(
-    request: Request,
-    connection: sqlite3.Connection = Depends(get_app_connection),
-) -> Response:
-    """Exchange the code, verify the ID token, and start a session."""
-    _require_configured()
-    try:
-        token = await oauth.google.authorize_access_token(request)
-    except OAuthError as error:
-        return _frontend_redirect(auth_error=error.error or "oauth_failed")
-
-    claims = token.get("userinfo")
-    if not claims or not claims.get("sub"):
-        return _frontend_redirect(auth_error="missing_id_token")
-
-    user = upsert_google_user(connection, dict(claims))
-    session_token = create_session(connection, user["id"])
-
-    response = _frontend_redirect()
-    response.set_cookie(
-        SESSION_COOKIE,
-        session_token,
-        max_age=SESSION_DAYS * 24 * 60 * 60,
-        httponly=True,
-        secure=COOKIE_SECURE,
-        samesite="lax",
-        path="/",
-    )
-    return response
-
-
 @router.get("/me")
-def me(
-    user: dict[str, Any] | None = Depends(current_user),
-    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE),
-) -> dict[str, Any]:
+def me(user: dict[str, Any] | None = Depends(current_user)) -> dict[str, Any]:
     """Signed-in user, or ``null``. Always 200 so the UI can render either state."""
     return {
-        "configured": GOOGLE_CONFIGURED,
+        "configured": SUPABASE_CONFIGURED,
         "user": user,
-        "media_token": media_token(session_token) if user and session_token else None,
+        "media_token": _media_signer.dumps(user) if user else None,
     }
-
-
-@router.post("/logout", status_code=204)
-def logout(
-    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE),
-    connection: sqlite3.Connection = Depends(get_app_connection),
-) -> Response:
-    if session_token:
-        delete_session(connection, session_token)
-    response = Response(status_code=204)
-    response.delete_cookie(SESSION_COOKIE, path="/", secure=COOKIE_SECURE, samesite="lax")
-    return response

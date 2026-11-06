@@ -76,7 +76,7 @@ export interface SetItem {
   cue_points: CuePoint[]
 }
 
-/** Named set persisted in the browser. Tracks are stored as Rekordbox IDs. */
+/** Row of the Supabase `saved_sets` table. Tracks are stored as Rekordbox IDs. */
 export interface SavedSet {
   id: string
   name: string
@@ -102,22 +102,20 @@ export interface MixPath {
   tracks: Track[]
 }
 
-/** Row from the app database's `users` table. */
+/** Supabase user as verified by the API from the access token. */
 export interface AuthUser {
-  id: number
+  /** Supabase user id (UUID); the `user_id` on that user's saved sets. */
+  id: string
   email: string
-  email_verified: boolean
   name: string | null
   picture_url: string | null
-  created_at: string
-  last_login_at: string
 }
 
-/** ``GET /api/auth/me``. `configured` is false until Google keys are set in `.env`. */
+/** ``GET /api/auth/me``. `configured` is false until `SUPABASE_URL` is set in `.env`. */
 export interface AuthStatus {
   configured: boolean
   user: AuthUser | null
-  /** Appended to audio URLs, since `<audio>` may be requested without cookies. */
+  /** Appended to audio and artwork URLs, which cannot send an Authorization header. */
   media_token: string | null
 }
 

@@ -11,19 +11,16 @@ import os
 import re
 import sqlite3
 import sys
-from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from starlette.middleware.sessions import SessionMiddleware
 
 from api import auth
 from api.artwork import extract_artwork
-from api.db import init_db
 from api.library import (
     DEFAULT_DB_PATH,
     connect,
@@ -35,6 +32,7 @@ from api.library import (
     fetch_tracks,
     fetch_tracks_by_internal_ids,
 )
+from api.pitch import MAX_SEMITONES, MIN_SEMITONES, PitchShiftError, prepare_shifted_audio
 
 _ML_DIR = Path(__file__).resolve().parent.parent / "ml"
 if str(_ML_DIR) not in sys.path:
@@ -68,31 +66,13 @@ MEDIA_TYPES = {
 
 RANGE_PATTERN = re.compile(r"bytes=(\d*)-(\d*)")
 
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    init_db()
-    yield
-
-
-app = FastAPI(title="SmartDJ Library API", version="1.0.0", lifespan=lifespan)
-
-# Only used to carry OAuth state between /login and /callback; login
-# sessions themselves live in the app database.
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=auth.SESSION_SECRET,
-    session_cookie=auth.OAUTH_STATE_COOKIE,
-    max_age=10 * 60,
-    same_site="lax",
-    https_only=auth.COOKIE_SECURE,
-)
+app = FastAPI(title="SmartDJ Library API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(ALLOWED_ORIGINS),
-    allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Range", "Content-Type"],
+    allow_headers=["Authorization", "Range", "Content-Type"],
     expose_headers=["Accept-Ranges", "Content-Range", "Content-Length"],
 )
 
@@ -125,7 +105,7 @@ def health() -> dict[str, Any]:
         "status": "ok" if exists else "missing-database",
         "database": str(DB_PATH),
         "database_exists": exists,
-        "google_auth_configured": auth.GOOGLE_CONFIGURED,
+        "supabase_auth_configured": auth.SUPABASE_CONFIGURED,
     }
 
 
@@ -283,7 +263,7 @@ def mix_path(
     }
 
 
-@app.get("/api/tracks/{track_id}/artwork", dependencies=SIGNED_IN)
+@app.get("/api/tracks/{track_id}/artwork", dependencies=[Depends(auth.require_media_user)])
 def get_track_artwork(
     track_id: int,
     connection: sqlite3.Connection = Depends(get_connection),
@@ -347,18 +327,30 @@ def _iter_file(path: Path, start: int, length: int) -> Iterator[bytes]:
 @app.get("/api/tracks/{track_id}/audio", dependencies=[Depends(auth.require_media_user)])
 def stream_track_audio(
     track_id: int,
+    semitones: int = Query(default=0, ge=MIN_SEMITONES, le=MAX_SEMITONES),
     range_header: str | None = Header(default=None, alias="Range"),
     connection: sqlite3.Connection = Depends(get_connection),
 ) -> Response:
-    """Stream the track's file from disk, honouring Range so seeking works."""
+    """Stream the track's file from disk, honouring Range so seeking works.
+
+    ``semitones`` pitch-shifts with Rubber Band (tempo unchanged) and is cached.
+    ``0`` streams the original file.
+    """
     path = fetch_audio_path(connection, track_id)
     if path is None:
         raise HTTPException(status_code=404, detail=f"Unknown track_id {track_id}")
     if not path.is_file():
         raise HTTPException(status_code=410, detail=f"Audio file missing: {path}")
 
-    file_size = path.stat().st_size
     media_type = MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
+    if semitones != 0:
+        try:
+            path = prepare_shifted_audio(path, track_id, semitones)
+        except PitchShiftError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        media_type = "audio/wav"
+
+    file_size = path.stat().st_size
 
     if range_header is None:
         start, end = 0, file_size - 1

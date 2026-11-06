@@ -14,7 +14,9 @@ import {
   loadPanelLayout,
   persistPanelLayout,
 } from '@/lib/panelLayout'
+import { fetchSavedSets, importLegacySavedSets } from '@/lib/savedSets'
 import { formatDuration, totalSetDuration } from '@/lib/setMath'
+import { supabase } from '@/lib/supabase'
 import { useSetStore } from '@/store/useSetStore'
 
 function App() {
@@ -28,7 +30,12 @@ function App() {
   const setCatalogStatus = useSetStore((state) => state.setCatalogStatus)
   const setCatalogError = useSetStore((state) => state.setCatalogError)
   const setAuth = useSetStore((state) => state.setAuth)
+  const clearLibrary = useSetStore((state) => state.clearLibrary)
+  const setSavedSets = useSetStore((state) => state.setSavedSets)
+  const setSavedSetsError = useSetStore((state) => state.setSavedSetsError)
   const signedInUserId = useSetStore((state) => state.auth?.user?.id ?? null)
+  /** Undefined until Supabase reports the stored session (or its absence). */
+  const [sessionUserId, setSessionUserId] = useState<string | null>()
 
   const columnRef = useRef<HTMLDivElement>(null)
   const dragOrigin = useRef(loadPanelLayout())
@@ -43,7 +50,20 @@ function App() {
   sidebarWidthRef.current = sidebarWidth
   graphHeightRef.current = graphHeight
 
+  // Fires once with the stored session, then on every sign-in, sign-out and
+  // hourly token refresh. Only the user id is kept, so a refresh does not
+  // re-fetch /auth/me and swap the media token under a playing track.
+  // Supabase calls must not be awaited inside this callback.
   useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSessionUserId(session?.user.id ?? null)
+    })
+    return () => data.subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (sessionUserId === undefined) return
+    if (sessionUserId === null) clearLibrary()
     const controller = new AbortController()
     getAuthStatus(controller.signal)
       .then(setAuth)
@@ -53,7 +73,26 @@ function App() {
         setCatalogError('Cannot reach the API.')
       })
     return () => controller.abort()
-  }, [setAuth, setCatalogError, setCatalogStatus])
+  }, [sessionUserId, clearLibrary, setAuth, setCatalogError, setCatalogStatus])
+
+  useEffect(() => {
+    if (signedInUserId === null) return
+    let cancelled = false
+    importLegacySavedSets()
+      .then(fetchSavedSets)
+      .then((sets) => {
+        if (!cancelled) setSavedSets(sets)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setSavedSetsError(
+          error instanceof Error ? error.message : 'Failed to load saved sets.',
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [signedInUserId, setSavedSets, setSavedSetsError])
 
   useEffect(() => {
     if (signedInUserId === null) return

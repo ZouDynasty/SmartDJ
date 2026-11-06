@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, LogIn, LogOut, UserRound } from 'lucide-react'
-import { GOOGLE_LOGIN_URL, logout } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 import { useSetStore } from '@/store/useSetStore'
 import type { AuthUser } from '@/types'
 
-/** The callback redirects back here with `?auth_error=` when Google sign-in fails. */
+const AUTH_ERROR_PARAMS = ['error', 'error_code', 'error_description']
+
+/** Supabase redirects back with `error_description` in the query or hash when sign-in fails. */
 function takeAuthError(): string | null {
   const url = new URL(window.location.href)
-  const error = url.searchParams.get('auth_error')
+  const hash = new URLSearchParams(url.hash.slice(1))
+  const error =
+    url.searchParams.get('error_description') ?? hash.get('error_description')
   if (error === null) return null
-  url.searchParams.delete('auth_error')
+  for (const param of AUTH_ERROR_PARAMS) url.searchParams.delete(param)
+  if (hash.has('error_description')) url.hash = ''
   window.history.replaceState(null, '', url)
   return error
 }
@@ -109,8 +114,6 @@ function AccountMenu({
 
 export function AccountButton() {
   const status = useSetStore((state) => state.auth)
-  const setAuth = useSetStore((state) => state.setAuth)
-  const clearLibrary = useSetStore((state) => state.clearLibrary)
   const [error, setError] = useState<string | null>(takeAuthError)
 
   if (status === null) return null
@@ -118,20 +121,32 @@ export function AccountButton() {
   if (!status.configured) {
     return (
       <span className="text-xs text-ink-muted">
-        Google sign-in is not configured — set it up in <code>.env</code>
+        Sign-in is not configured — set <code>SUPABASE_URL</code> in{' '}
+        <code>.env</code>
       </span>
     )
   }
 
+  // Supabase redirects to Google and back to this page. App picks up the new
+  // session through onAuthStateChange, including after sign-out.
+  const handleSignIn = () => {
+    supabase.auth
+      .signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+          queryParams: { prompt: 'select_account' },
+        },
+      })
+      .then(({ error: signInError }) => {
+        if (signInError) setError(signInError.message)
+      })
+  }
+
   const handleLogout = () => {
-    logout()
-      .then(() => {
-        clearLibrary()
-        setAuth({ ...status, user: null, media_token: null })
-      })
-      .catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : 'Log out failed')
-      })
+    supabase.auth.signOut().then(({ error: signOutError }) => {
+      if (signOutError) setError(signOutError.message)
+    })
   }
 
   return (
@@ -142,10 +157,10 @@ export function AccountButton() {
       {status.user ? (
         <AccountMenu user={status.user} onLogout={handleLogout} />
       ) : (
-        <a href={GOOGLE_LOGIN_URL} className={buttonClass}>
+        <button type="button" onClick={handleSignIn} className={buttonClass}>
           <LogIn className="size-3.5" />
           Sign in with Google
-        </a>
+        </button>
       )}
     </div>
   )
