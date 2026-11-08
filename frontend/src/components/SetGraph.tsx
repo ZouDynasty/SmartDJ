@@ -11,6 +11,7 @@ import {
 import type { DotItemDotProps, TooltipContentProps } from 'recharts'
 import { Activity, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/lib/theme'
 import {
   CAMELOT_KEYS,
   bpmDomain,
@@ -23,12 +24,40 @@ import type { SetPoint } from '@/lib/setMath'
 import { MAX_ZOOM, MIN_ZOOM, useSetStore } from '@/store/useSetStore'
 import type { MetricView } from '@/types'
 
-/** BPM blue, energy black, key grey — readable 2px lines on the white plane. */
-const SERIES = {
-  bpm: { label: 'BPM', color: '#1d4ed8' },
-  energy: { label: 'Energy', color: '#0f172a' },
-  key: { label: 'Key', color: '#64748b' },
+const SERIES_LABELS = { bpm: 'BPM', energy: 'Energy', key: 'Key' } as const
+type SeriesKey = keyof typeof SERIES_LABELS
+
+/**
+ * Mist Blue BPM, Pink energy, graphite-grey key. The light theme uses deeper
+ * shades so the lines stay readable on frosted white panels.
+ */
+const PALETTES = {
+  light: {
+    bpm: '#3b78ad',
+    energy: '#d03d7b',
+    key: '#6b7480',
+    grid: 'rgba(60, 85, 120, 0.16)',
+    axis: 'rgba(60, 85, 120, 0.3)',
+    tick: '#23262b',
+    cursor: '#4a525c',
+    dot: '#f4f8fc',
+  },
+  dark: {
+    bpm: '#8fb8e0',
+    energy: '#f7a8c9',
+    key: '#9aa5b3',
+    grid: 'rgba(255, 255, 255, 0.08)',
+    axis: 'rgba(255, 255, 255, 0.18)',
+    tick: '#eceff3',
+    cursor: '#aab3bf',
+    dot: '#262b33',
+  },
 } as const
+
+/** Series colors, grid and text colors for the active theme. */
+function useGraphPalette() {
+  return PALETTES[useTheme((state) => state.theme)]
+}
 
 const VIEW_OPTIONS: { value: MetricView; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -36,12 +65,6 @@ const VIEW_OPTIONS: { value: MetricView; label: string }[] = [
   { value: 'energy', label: 'Energy Only' },
   { value: 'key', label: 'Key Only' },
 ]
-
-const GRID_COLOR = '#c8d0d8'
-const AXIS_COLOR = '#c8d0d8'
-const TICK_STYLE = { fill: '#0a0c10', fontSize: 11 } as const
-/** Unhighlighted dots sit on raised, one step above the canvas. */
-const DOT_FILL = '#f4f6f8'
 
 /** Camelot axis renders every one of the 24 harmonic ticks. */
 const KEY_TICKS = CAMELOT_KEYS.map((_, index) => index)
@@ -90,12 +113,13 @@ function buildTimeTicks(spanSec: number, zoom: number): number[] {
 }
 
 function SetTooltip({ active, payload }: TooltipContentProps) {
+  const palette = useGraphPalette()
   if (!active || !payload || payload.length === 0) return null
   const point = payload[0]?.payload as SetPoint | undefined
   if (!point?.instanceId) return null
 
   return (
-    <div className="min-w-52 rounded-lg border border-line bg-panel p-3 shadow-lg shadow-slate-900/15">
+    <div className="min-w-52 rounded-lg border border-line bg-float p-3 shadow-lg shadow-black/15">
       <p className="flex items-baseline gap-2">
         <span className="font-mono text-xs text-ink-faint">
           {String(point.index + 1).padStart(2, '0')}
@@ -107,17 +131,17 @@ function SetTooltip({ active, payload }: TooltipContentProps) {
       <p className="mt-0.5 truncate text-xs text-ink-muted">{point.artist}</p>
       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
         <dt className="text-ink-faint">BPM</dt>
-        <dd className="text-right font-mono" style={{ color: SERIES.bpm.color }}>
+        <dd className="text-right font-mono" style={{ color: palette.bpm }}>
           {point.bpm === null ? '—' : point.bpm.toFixed(1)}
         </dd>
         <dt className="text-ink-faint">Key</dt>
-        <dd className="text-right font-mono" style={{ color: SERIES.key.color }}>
+        <dd className="text-right font-mono" style={{ color: palette.key }}>
           {point.keyLabel}
         </dd>
         <dt className="text-ink-faint">Energy</dt>
         <dd
           className="text-right font-mono"
-          style={{ color: SERIES.energy.color }}
+          style={{ color: palette.energy }}
         >
           {point.energy === null ? '—' : point.energy.toFixed(2)}
         </dd>
@@ -142,6 +166,11 @@ export function SetGraph({ height }: { height: number }) {
     (state) => state.highlightedInstanceId,
   )
   const setHighlight = useSetStore((state) => state.setHighlight)
+  const palette = useGraphPalette()
+  const tickStyle = useMemo(
+    () => ({ fill: palette.tick, fontSize: 11 }) as const,
+    [palette],
+  )
 
   const points = useMemo(() => buildSetPoints(activeQueue), [activeQueue])
   const chartData = points.length > 0 ? points : EMPTY_PLACEHOLDER
@@ -151,7 +180,7 @@ export function SetGraph({ height }: { height: number }) {
   const bpmScale = useMemo(() => bpmDomain(points), [points])
 
   const isVisible = useCallback(
-    (series: keyof typeof SERIES) => metricView === 'all' || metricView === series,
+    (series: SeriesKey) => metricView === 'all' || metricView === series,
     [metricView],
   )
 
@@ -170,7 +199,7 @@ export function SetGraph({ height }: { height: number }) {
   }, [setHighlight])
 
   const renderDot = useCallback(
-    (series: keyof typeof SERIES) =>
+    (series: SeriesKey) =>
       function Dot({ cx, cy, payload }: DotItemDotProps) {
         if (typeof cx !== 'number' || typeof cy !== 'number') return null
         const point = payload as SetPoint | undefined
@@ -181,13 +210,13 @@ export function SetGraph({ height }: { height: number }) {
             cx={cx}
             cy={cy}
             r={isActive ? 7 : 3.5}
-            fill={isActive ? SERIES[series].color : DOT_FILL}
-            stroke={SERIES[series].color}
+            fill={isActive ? palette[series] : palette.dot}
+            stroke={palette[series]}
             strokeWidth={isActive ? 2.5 : 1.75}
           />
         )
       },
-    [highlightedInstanceId],
+    [highlightedInstanceId, palette],
   )
 
   return (
@@ -197,7 +226,7 @@ export function SetGraph({ height }: { height: number }) {
     >
       <header className="flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2.5">
         <div className="flex items-center gap-2 text-ink">
-          <Activity className="size-4 text-accent" />
+          <Activity className="size-4 text-accent-ink" />
           <h2 className="text-xs font-semibold uppercase tracking-wider">
             Set Trajectory
           </h2>
@@ -267,7 +296,7 @@ export function SetGraph({ height }: { height: number }) {
               onMouseMove={handleMove}
               onMouseLeave={handleLeave}
             >
-              <CartesianGrid stroke={GRID_COLOR} strokeDasharray="2 4" />
+              <CartesianGrid stroke={palette.grid} strokeDasharray="2 4" />
 
               <XAxis
                 type="number"
@@ -276,8 +305,8 @@ export function SetGraph({ height }: { height: number }) {
                 ticks={timeTicks}
                 tickFormatter={formatDuration}
                 allowDataOverflow
-                stroke={AXIS_COLOR}
-                tick={TICK_STYLE}
+                stroke={palette.axis}
+                tick={tickStyle}
                 height={28}
               />
 
@@ -286,8 +315,8 @@ export function SetGraph({ height }: { height: number }) {
                 orientation="left"
                 domain={bpmScale}
                 allowDecimals={false}
-                stroke={SERIES.bpm.color}
-                tick={TICK_STYLE}
+                stroke={palette.bpm}
+                tick={tickStyle}
                 width={44}
               />
               <YAxis
@@ -296,8 +325,8 @@ export function SetGraph({ height }: { height: number }) {
                 domain={[0, 1]}
                 ticks={ENERGY_TICKS}
                 tickFormatter={(value: number) => value.toFixed(2)}
-                stroke={SERIES.energy.color}
-                tick={TICK_STYLE}
+                stroke={palette.energy}
+                tick={tickStyle}
                 width={44}
               />
               <YAxis
@@ -308,22 +337,22 @@ export function SetGraph({ height }: { height: number }) {
                 ticks={KEY_TICKS}
                 tickFormatter={camelotLabel}
                 interval={0}
-                stroke={SERIES.key.color}
-                tick={TICK_STYLE}
+                stroke={palette.key}
+                tick={tickStyle}
                 width={44}
               />
 
               <Tooltip
                 content={SetTooltip}
-                cursor={{ stroke: '#3d4654', strokeDasharray: '3 3' }}
+                cursor={{ stroke: palette.cursor, strokeDasharray: '3 3' }}
               />
 
               <Line
                 yAxisId="bpm"
                 dataKey="bpm"
-                name={SERIES.bpm.label}
+                name={SERIES_LABELS.bpm}
                 type="linear"
-                stroke={SERIES.bpm.color}
+                stroke={palette.bpm}
                 strokeWidth={2}
                 strokeOpacity={isVisible('bpm') ? 1 : 0}
                 dot={isVisible('bpm') ? renderDot('bpm') : false}
@@ -334,9 +363,9 @@ export function SetGraph({ height }: { height: number }) {
               <Line
                 yAxisId="energy"
                 dataKey="energy"
-                name={SERIES.energy.label}
+                name={SERIES_LABELS.energy}
                 type="linear"
-                stroke={SERIES.energy.color}
+                stroke={palette.energy}
                 strokeWidth={2}
                 strokeOpacity={isVisible('energy') ? 1 : 0}
                 dot={isVisible('energy') ? renderDot('energy') : false}
@@ -347,9 +376,9 @@ export function SetGraph({ height }: { height: number }) {
               <Line
                 yAxisId="key"
                 dataKey="keyIndex"
-                name={SERIES.key.label}
+                name={SERIES_LABELS.key}
                 type="linear"
-                stroke={SERIES.key.color}
+                stroke={palette.key}
                 strokeWidth={2}
                 strokeDasharray="5 3"
                 strokeOpacity={isVisible('key') ? 1 : 0}

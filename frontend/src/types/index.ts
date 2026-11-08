@@ -119,6 +119,27 @@ export interface AuthStatus {
   media_token: string | null
 }
 
+export interface LibraryImportJob {
+  state: 'idle' | 'running' | 'done' | 'error'
+  /** `tracks` writes Rekordbox metadata; `analysis` computes energy and fills gaps. */
+  phase: 'tracks' | 'analysis' | null
+  done: number
+  total: number
+  message: string | null
+}
+
+/** This machine's library setup: where the Rekordbox XML and audio files live. */
+export interface LibrarySetupStatus {
+  configured: boolean
+  database_exists: boolean
+  /** True once the setup dialog has been shown, so it stops auto-opening. */
+  seen: boolean
+  rekordbox_xml: string | null
+  music_root: string | null
+  imported_at: string | null
+  job: LibraryImportJob
+}
+
 /** Which metric lines the set trajectory graph renders. */
 export type MetricView = 'all' | 'bpm' | 'energy' | 'key'
 

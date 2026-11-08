@@ -240,7 +240,7 @@ function RatingStars({ rating }: { rating: number }) {
           className={cn(
             'size-3',
             star <= rating
-              ? 'fill-accent text-accent'
+              ? 'fill-accent text-accent-ink'
               : 'text-ink-faint',
           )}
         />
@@ -432,7 +432,7 @@ export function TrackLibrary() {
       <header className="shrink-0 border-b border-line bg-panel">
         <div className="flex min-w-0 flex-1 items-center gap-2 px-4 py-2.5">
         <div className="flex shrink-0 items-center gap-2 text-ink">
-          <Disc3 className="size-4 text-accent" />
+          <Disc3 className="size-4 text-accent-ink" />
           <h2 className="text-xs font-semibold uppercase tracking-wider">
             DJ Catalog
           </h2>
@@ -516,8 +516,8 @@ export function TrackLibrary() {
               className={cn(
                 'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-tight transition-colors',
                 showCompatible && compatibleSeed
-                  ? 'border-accent bg-accent text-white shadow-sm shadow-accent/30'
-                  : 'border-accent bg-theme-raised text-accent hover:bg-theme',
+                  ? 'border-accent bg-accent text-on-accent shadow-sm shadow-accent/30'
+                  : 'border-accent bg-theme-raised text-accent-ink hover:bg-theme',
                 !compatibleSeed &&
                   'cursor-not-allowed border-line bg-raised text-ink-faint hover:bg-raised',
               )}
@@ -579,7 +579,7 @@ export function TrackLibrary() {
             <p className="px-3 py-6 text-sm text-ink-muted">Loading catalog…</p>
           )}
           {catalogStatus === 'error' && (
-            <p className="px-3 py-6 text-sm text-rose-500">
+            <p className="px-3 py-6 text-sm text-danger">
               {catalogError ?? 'Failed to load the catalog.'}
             </p>
           )}
@@ -589,7 +589,7 @@ export function TrackLibrary() {
             </p>
           )}
           {catalogStatus === 'ready' && showRanking && rankingError && (
-            <p className="px-3 py-6 text-sm text-rose-500">{rankingError}</p>
+            <p className="px-3 py-6 text-sm text-danger">{rankingError}</p>
           )}
           {catalogStatus === 'ready' &&
             !rankingLoading &&
@@ -669,8 +669,8 @@ export function TrackLibrary() {
                     className={cn(
                       'flex size-6 items-center justify-center rounded-full transition-colors',
                       isPlayingRow
-                        ? 'bg-accent text-white'
-                        : 'text-ink-muted hover:bg-theme hover:text-accent',
+                        ? 'bg-accent text-on-accent'
+                        : 'text-ink-muted hover:bg-theme hover:text-accent-ink',
                     )}
                   >
                     {isPlayingRow ? (
@@ -691,10 +691,10 @@ export function TrackLibrary() {
                   <span className="truncate text-xs text-ink-faint">
                     {trackGenre(track) ?? '—'}
                   </span>
-                  <span className="text-right font-mono text-xs text-blue-700">
+                  <span className="text-right font-mono text-xs text-lagoon-700">
                     {bpm === null ? '—' : bpm.toFixed(1)}
                   </span>
-                  <span className="text-right font-mono text-xs text-slate-600">
+                  <span className="text-right font-mono text-xs text-ink-muted">
                     {trackKey(track) ?? '—'}
                   </span>
                   <span className="flex min-w-0 items-center justify-end gap-1.5 overflow-hidden">

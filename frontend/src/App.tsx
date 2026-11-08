@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Headphones, TriangleAlert } from 'lucide-react'
 import { AccountButton } from '@/components/AccountButton'
 import { AudioPlayer } from '@/components/AudioPlayer'
+import { LibrarySetup } from '@/components/LibrarySetup'
 import { NowNext } from '@/components/NowNext'
 import { ResizeHandle } from '@/components/ResizeHandle'
 import { SetBuilder } from '@/components/SetBuilder'
@@ -34,6 +35,7 @@ function App() {
   const setSavedSets = useSetStore((state) => state.setSavedSets)
   const setSavedSetsError = useSetStore((state) => state.setSavedSetsError)
   const signedInUserId = useSetStore((state) => state.auth?.user?.id ?? null)
+  const libraryVersion = useSetStore((state) => state.libraryVersion)
   /** Undefined until Supabase reports the stored session (or its absence). */
   const [sessionUserId, setSessionUserId] = useState<string | null>()
 
@@ -114,7 +116,7 @@ function App() {
       })
 
     return () => controller.abort()
-  }, [signedInUserId, setCatalog, setCatalogError, setCatalogStatus])
+  }, [signedInUserId, libraryVersion, setCatalog, setCatalogError, setCatalogStatus])
 
   useEffect(() => {
     const column = columnRef.current
@@ -145,7 +147,7 @@ function App() {
   return (
     <div className="flex h-svh min-h-0 flex-col gap-px overflow-hidden bg-seam font-sans text-ink">
       <header className="flex shrink-0 items-center gap-3 bg-theme px-4 py-2.5">
-        <Headphones className="size-4 text-accent" />
+        <Headphones className="size-4 text-accent-ink" />
         <h1 className="text-sm font-semibold tracking-tight text-ink">
           SmartDJ
           <span className="ml-2 font-normal text-ink-muted">Set Builder</span>
@@ -168,10 +170,10 @@ function App() {
         </span>
         <div className="ml-auto flex items-center gap-3">
           {catalogStatus === 'error' && (
-            <span className="flex items-center gap-1.5 text-xs text-rose-500">
+            <span className="flex items-center gap-1.5 text-xs text-danger">
               <TriangleAlert className="size-3.5" />
               {catalogError} — start the API with{' '}
-              <code className="text-rose-600">
+              <code className="text-danger">
                 python -m uvicorn api.main:app --port 8000
               </code>
             </span>
@@ -237,6 +239,7 @@ function App() {
       </div>
 
       <AudioPlayer />
+      <LibrarySetup />
     </div>
   )
 }

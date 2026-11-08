@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import type {
   AuthStatus,
   CompatibilityRanking,
+  LibrarySetupStatus,
   MixPath,
   Playlist,
   Recommendation,
@@ -118,4 +119,38 @@ export function getMixPath(
 
 export function getAuthStatus(signal?: AbortSignal): Promise<AuthStatus> {
   return apiFetch<AuthStatus>('/auth/me', { signal })
+}
+
+export function getLibrarySetup(signal?: AbortSignal): Promise<LibrarySetupStatus> {
+  return apiFetch<LibrarySetupStatus>('/setup', { signal })
+}
+
+/** Saves both paths and starts importing the XML in the background. */
+export function startLibrarySetup(paths: {
+  rekordbox_xml: string
+  music_root: string
+}): Promise<LibrarySetupStatus> {
+  return apiFetch<LibrarySetupStatus>('/setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(paths),
+  })
+}
+
+/** Records that the setup dialog has been shown so it won't auto-open again. */
+export function markLibrarySetupSeen(): Promise<LibrarySetupStatus> {
+  return apiFetch<LibrarySetupStatus>('/setup/seen', { method: 'POST' })
+}
+
+/**
+ * Opens the native macOS picker through the local API, since a browser picker
+ * never reveals absolute paths. Resolves to null when the user cancels.
+ */
+export async function browseForPath(kind: 'xml' | 'folder'): Promise<string | null> {
+  const { path } = await apiFetch<{ path: string | null }>('/setup/browse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind }),
+  })
+  return path
 }

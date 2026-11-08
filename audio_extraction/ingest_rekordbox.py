@@ -12,6 +12,7 @@ import argparse
 import json
 import sqlite3
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from rich.console import Console
@@ -495,6 +496,7 @@ def ingest_library(
     skip_audio: bool = False,
     force_audio: bool = False,
     dry_run: bool = False,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, int]:
     library = parse_rekordbox_xml(xml_path)
     accepted: list[RekordboxTrack] = []
@@ -612,6 +614,8 @@ def ingest_library(
                     if stored is not None and stored.get("energy_score") is not None:
                         stats["preserved_energy"] += 1
                     progress.advance(task)
+                    if on_progress is not None:
+                        on_progress(index, len(accepted))
                     continue
 
                 row = enrich_track(
@@ -636,6 +640,8 @@ def ingest_library(
                 if index % 25 == 0:
                     connection.commit()
                 progress.advance(task)
+                if on_progress is not None:
+                    on_progress(index, len(accepted))
 
         playlist_stats = replace_playlists(connection, library, known_ids)
         stats.update(playlist_stats)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 from api.paths import resolve_audio_path
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "library.sqlite"
+DB_PATH = Path(os.environ.get("SMARTDJ_DB", DEFAULT_DB_PATH)).expanduser()
 
 #: Scalar columns returned by the catalog list endpoint. ``tempo_markers_json``
 #: is ~6.8 MB across the library and ``rekordbox_attrs_json`` ~1.9 MB, so both

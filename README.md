@@ -55,7 +55,16 @@ Accounts and saved sets live in a Supabase project. The library and audio stay l
 
 Supabase keeps the session in the browser, so you stay signed in across restarts. Sets saved in the browser before the switch to Supabase are copied into your account the first time you sign in.
 
-A library database should already exist at `data/library.sqlite`. If it is missing, ingest a Rekordbox XML export first (see below) — the UI will show `missing-database` until that file is present.
+### Library setup
+
+The first time you sign in on a machine, SmartDJ asks for two paths:
+
+- **Rekordbox XML export.** In Rekordbox, choose **File → Export Collection in xml format**.
+- **Music folder.** The folder that holds your audio files. If a track's saved location no longer exists (another drive, another Mac), the API looks for it here, first at the same relative location and then by filename anywhere inside the folder.
+
+**Browse…** opens the native macOS picker through the API. A browser picker can't reveal a full path, so on other systems paste the path instead. Both paths are saved to `data/settings.json` on this machine (gitignored).
+
+The import then runs in the background in two passes. The first writes tracks and playlists, so the catalog appears within seconds. The second analyzes audio for energy and fills in any missing BPM, key, or genre. On a new library that can take a long time; the progress card in the corner shows how far it has got. Reopen setup any time from **Account → Library setup** to change a path or re-import after exporting again. Re-imports are incremental, like the command below.
 
 ## Refresh the library
 

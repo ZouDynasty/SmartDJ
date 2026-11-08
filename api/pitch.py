@@ -1,8 +1,14 @@
-"""Pitch-shift a library track with pyrubberband and cache the WAV.
+"""Pitch-shift a library track with Rubber Band and cache the WAV.
 
 Rubber Band changes pitch without changing duration, so BPM stays put and only
 the key moves. The ``rubberband`` CLI has to be on ``PATH`` (Homebrew:
 ``brew install rubberband``).
+
+Quality notes. The CLI is driven directly instead of through ``pyrubberband``
+because that wrapper writes its input as 16-bit PCM. The render also uses the
+R3 (``--fine``) engine, keeps full stereo width (no ``--centre-focus``, which
+trades width for centre focus and sounds close to mono), works in 32-bit float
+end to end, and stores 24-bit PCM.
 """
 
 from __future__ import annotations
@@ -10,6 +16,8 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -20,6 +28,8 @@ MIN_SEMITONES = -12
 MAX_SEMITONES = 12
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "pitch_cache"
+#: Bump when the render quality changes so stale lower-quality files are ignored.
+_CACHE_TAG = "_hq"
 
 _KEY_LOCKS: dict[str, threading.Lock] = {}
 _KEY_LOCKS_GUARD = threading.Lock()
@@ -57,7 +67,7 @@ def prepare_shifted_audio(source: Path, track_id: int, semitones: int) -> Path:
 
 def _cache_path(source: Path, track_id: int, semitones: int) -> Path:
     stat = source.stat()
-    name = f"{track_id}_{stat.st_mtime_ns}_{stat.st_size}_{semitones:+d}.wav"
+    name = f"{track_id}_{stat.st_mtime_ns}_{stat.st_size}_{semitones:+d}{_CACHE_TAG}.wav"
     return CACHE_DIR / name
 
 
@@ -107,40 +117,61 @@ def _load_audio(path: Path):
     return audio, int(sample_rate)
 
 
+def _run_rubberband(source: Path, destination: Path, semitones: int) -> None:
+    """Pitch-shift ``source`` into ``destination`` (both 32-bit float WAV)."""
+    command = [
+        "rubberband",
+        "-q",
+        "--fine",
+        "--pitch",
+        str(semitones),
+        str(source),
+        str(destination),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
+        raise PitchShiftError(f"rubberband failed: {detail}")
+
+
 def _render(source: Path, cache: Path, track_id: int, semitones: int) -> None:
+    import numpy as np
     import soundfile as sf
 
     _ensure_rubberband_on_path()
     started = time.perf_counter()
     logger.info("Pitch-shifting track %s by %+d semitones", track_id, semitones)
 
-    try:
-        import pyrubberband as pyrb
-
-        audio, sample_rate = _load_audio(source)
-        if audio.size == 0 or sample_rate <= 0:
-            raise PitchShiftError("Audio file is empty")
-        shifted = pyrb.pitch_shift(
-            audio,
-            sample_rate,
-            n_steps=semitones,
-            rbargs={"--centre-focus": ""},
-        )
-    except PitchShiftError:
-        raise
-    except Exception as error:
-        raise PitchShiftError(f"Pitch shift failed: {error}") from error
-
     cache.parent.mkdir(parents=True, exist_ok=True)
     # Keep a .wav suffix so libsndfile accepts the file, but don't use the
     # final name until the write finishes.
     temporary = cache.with_name(f"{cache.stem}.partial.wav")
     try:
-        sf.write(temporary, shifted, sample_rate, subtype="PCM_16")
+        audio, sample_rate = _load_audio(source)
+        if audio.size == 0 or sample_rate <= 0:
+            raise PitchShiftError("Audio file is empty")
+
+        with tempfile.TemporaryDirectory(prefix="smartdj-pitch-") as work:
+            raw_in = Path(work) / "in.wav"
+            raw_out = Path(work) / "out.wav"
+            sf.write(raw_in, audio, sample_rate, subtype="FLOAT")
+            del audio
+            _run_rubberband(raw_in, raw_out, semitones)
+            shifted, shifted_rate = sf.read(raw_out, always_2d=True, dtype="float32")
+
+        # Shifting up can push peaks past full scale; scale down instead of
+        # letting the PCM conversion clip them.
+        peak = float(np.max(np.abs(shifted))) if shifted.size else 0.0
+        if peak > 1.0:
+            shifted = shifted / peak
+        sf.write(temporary, shifted, int(shifted_rate), subtype="PCM_24")
         temporary.replace(cache)
+    except PitchShiftError:
+        temporary.unlink(missing_ok=True)
+        raise
     except Exception as error:
         temporary.unlink(missing_ok=True)
-        raise PitchShiftError(f"Could not store the shifted audio: {error}") from error
+        raise PitchShiftError(f"Pitch shift failed: {error}") from error
 
     elapsed = time.perf_counter() - started
     logger.info("Cached pitch shift for track %s in %.1fs", track_id, elapsed)

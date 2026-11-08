@@ -68,6 +68,10 @@ interface SetStore {
   catalog: Track[]
   catalogStatus: 'idle' | 'loading' | 'ready' | 'error'
   catalogError: string | null
+  /** Bumped when an import writes the library, so the catalog is fetched again. */
+  libraryVersion: number
+  /** Library setup dialog, opened on first sign-in or from the account menu. */
+  setupOpen: boolean
 
   /** Ordered live set. */
   activeQueue: SetItem[]
@@ -103,6 +107,8 @@ interface SetStore {
   setCatalog: (tracks: Track[]) => void
   setCatalogStatus: (status: SetStore['catalogStatus']) => void
   setCatalogError: (message: string | null) => void
+  bumpLibraryVersion: () => void
+  setSetupOpen: (open: boolean) => void
 
   setActiveQueue: (queue: SetItem[]) => void
   /** Splice Dijkstra intermediates between the Now Playing and Up Next tracks. */
@@ -150,6 +156,8 @@ export const useSetStore = create<SetStore>()((set) => ({
   catalog: [],
   catalogStatus: 'idle',
   catalogError: null,
+  libraryVersion: 0,
+  setupOpen: false,
 
   activeQueue: [],
   savedSets: [],
@@ -201,6 +209,9 @@ export const useSetStore = create<SetStore>()((set) => ({
     }),
   setCatalogStatus: (status) => set({ catalogStatus: status }),
   setCatalogError: (message) => set({ catalogError: message }),
+  bumpLibraryVersion: () =>
+    set((state) => ({ libraryVersion: state.libraryVersion + 1 })),
+  setSetupOpen: (open) => set({ setupOpen: open }),
 
   setActiveQueue: (queue) => set({ activeQueue: queue }),
 

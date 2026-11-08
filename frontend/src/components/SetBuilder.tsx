@@ -33,10 +33,10 @@ interface SetCardProps {
 /** Minor (A) keys read blue, major (B) keys read grey — quick harmonic scan. */
 function keyBadgeClass(keyLabel: string): string {
   if (keyLabel.endsWith('A')) {
-    return 'bg-blue-100 text-blue-800'
+    return 'bg-lagoon-100 text-lagoon-800'
   }
   if (keyLabel.endsWith('B')) {
-    return 'bg-slate-200 text-slate-800'
+    return 'bg-chip text-chip-ink'
   }
   return 'bg-raised text-ink-muted'
 }
@@ -69,10 +69,10 @@ function SetCard({
         'group relative flex w-full cursor-grab items-center gap-2 rounded-md border px-2 py-1.5',
         'bg-theme-raised transition-colors select-none',
         isHighlighted
-          ? 'border-accent bg-theme-raised shadow-[0_0_0_1px_rgba(29,78,216,0.35)]'
+          ? 'border-accent bg-theme-raised shadow-[0_0_0_1px_var(--color-accent)]'
           : 'border-theme-line hover:border-accent',
         isDragging &&
-          'z-10 cursor-grabbing opacity-90 shadow-lg shadow-slate-900/20',
+          'z-10 cursor-grabbing opacity-90 shadow-lg shadow-black/20',
       )}
       {...attributes}
       {...listeners}
@@ -89,8 +89,8 @@ function SetCard({
         className={cn(
           'flex size-5 shrink-0 items-center justify-center rounded font-mono text-xs transition-colors',
           isPlaying
-            ? 'bg-accent text-white'
-            : 'text-ink-muted hover:bg-theme hover:text-accent',
+            ? 'bg-accent text-on-accent'
+            : 'text-ink-muted hover:bg-theme hover:text-accent-ink',
         )}
       >
         {isPlaying ? (
@@ -119,7 +119,7 @@ function SetCard({
 
       <div className="flex shrink-0 flex-col items-end gap-0.5 font-mono text-[11px] leading-tight">
         <span className="flex items-center gap-1">
-          <span className="text-blue-700">
+          <span className="text-lagoon-700">
             {point.bpm === null ? '—' : point.bpm.toFixed(0)}
           </span>
           <span
@@ -151,7 +151,7 @@ function SetCard({
         }}
         className={cn(
           'shrink-0 rounded p-0.5 text-ink-faint opacity-0 transition-all',
-          'group-hover:opacity-100 hover:bg-slate-200 hover:text-ink',
+          'group-hover:opacity-100 hover:bg-hover hover:text-ink',
         )}
       >
         <X className="size-3" />
@@ -248,7 +248,7 @@ export function SetBuilder({ width }: { width: number }) {
     >
       <header className="flex shrink-0 flex-col gap-2 border-b border-theme-line bg-theme-raised px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <ListMusic className="size-4 shrink-0 text-accent" />
+          <ListMusic className="size-4 shrink-0 text-accent-ink" />
           <h2 className="min-w-0 truncate text-xs font-semibold uppercase tracking-wider text-ink">
             {loadedSet?.name ?? 'Active Set Queue'}
           </h2>
@@ -280,7 +280,7 @@ export function SetBuilder({ width }: { width: number }) {
             className={cn(
               'flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold',
               canSave
-                ? 'border-accent bg-accent text-white hover:bg-accent-hover'
+                ? 'border-accent bg-accent text-on-accent hover:bg-accent-hover'
                 : 'cursor-not-allowed border-theme-line text-ink-faint',
             )}
           >
@@ -289,7 +289,7 @@ export function SetBuilder({ width }: { width: number }) {
           </button>
         </form>
         {savedSetsError && (
-          <p className="text-xs text-rose-600">{savedSetsError}</p>
+          <p className="text-xs text-danger">{savedSetsError}</p>
         )}
         <div className="flex items-center gap-2">
           <button
@@ -346,7 +346,7 @@ export function SetBuilder({ width }: { width: number }) {
                     className={cn(
                       'border-b border-theme-line/60 last:border-b-0',
                       isLoaded && !confirming && 'bg-theme-raised',
-                      confirming && 'bg-rose-50',
+                      confirming && 'bg-danger-soft',
                     )}
                   >
                     {confirming ? (
@@ -400,7 +400,7 @@ export function SetBuilder({ width }: { width: number }) {
                           type="button"
                           aria-label={`Delete ${entry.name}`}
                           onClick={() => setPendingDeleteId(entry.id)}
-                          className="mr-1 rounded p-1 text-ink-faint hover:bg-slate-200 hover:text-ink"
+                          className="mr-1 rounded p-1 text-ink-faint hover:bg-hover hover:text-ink"
                         >
                           <X className="size-3" />
                         </button>

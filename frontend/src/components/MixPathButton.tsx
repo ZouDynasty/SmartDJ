@@ -89,8 +89,8 @@ export function MixPathButton({ compact = false }: { compact?: boolean }) {
             : 'px-4 py-2 text-sm',
           'shrink-0',
           status.kind === 'loading'
-            ? 'border-accent bg-accent text-white shadow-sm shadow-accent/30'
-            : 'border-accent bg-theme-raised text-accent hover:bg-theme',
+            ? 'border-accent bg-accent text-on-accent shadow-sm shadow-accent/30'
+            : 'border-accent bg-theme-raised text-accent-ink hover:bg-theme',
           disabled &&
             status.kind !== 'loading' &&
             'cursor-not-allowed border-line bg-raised text-ink-faint hover:bg-raised',
@@ -123,7 +123,7 @@ export function MixPathButton({ compact = false }: { compact?: boolean }) {
         </p>
       )}
       {status.kind === 'empty' && (
-        <p className="max-w-72 text-center text-[11px] text-rose-600">
+        <p className="max-w-72 text-center text-[11px] text-danger">
           No mixable path within 10 hops
           {status.genres.length > 0
             ? ` through ${status.genres.join(', ')}`
@@ -132,7 +132,7 @@ export function MixPathButton({ compact = false }: { compact?: boolean }) {
         </p>
       )}
       {status.kind === 'error' && (
-        <p className="max-w-72 text-center text-[11px] text-rose-600">
+        <p className="max-w-72 text-center text-[11px] text-danger">
           {status.message}
         </p>
       )}

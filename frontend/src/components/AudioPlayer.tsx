@@ -36,10 +36,10 @@ function PitchShift({
 }) {
   return (
     <div
-      className="flex shrink-0 items-center rounded border border-slate-300 bg-white"
+      className="flex shrink-0 items-center rounded border border-chip-line bg-panel"
       title="Pitch shift in semitones. Tempo stays the same. One octave max."
     >
-      <span className="border-r border-slate-300 px-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+      <span className="border-r border-chip-line px-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
         Pitch
       </span>
       <button
@@ -49,7 +49,7 @@ function PitchShift({
         aria-label="Shift pitch down one semitone"
         className={cn(
           'flex size-6 items-center justify-center text-ink transition-colors',
-          'hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent',
+          'hover:bg-hover disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent',
         )}
       >
         <Minus className="size-3" />
@@ -71,7 +71,7 @@ function PitchShift({
         aria-label="Shift pitch up one semitone"
         className={cn(
           'flex size-6 items-center justify-center text-ink transition-colors',
-          'hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent',
+          'hover:bg-hover disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent',
         )}
       >
         <Plus className="size-3" />
@@ -239,7 +239,7 @@ export function AudioPlayer() {
         aria-label={isPlaying ? 'Pause' : 'Play'}
         className={cn(
           'flex size-9 shrink-0 items-center justify-center rounded-full',
-          'bg-accent text-white transition-colors hover:bg-accent-hover',
+          'bg-accent text-on-accent transition-colors hover:bg-accent-hover',
         )}
       >
         {isPlaying ? (
@@ -265,13 +265,13 @@ export function AudioPlayer() {
       </div>
 
       <span className="hidden shrink-0 items-center gap-1.5 font-mono text-xs md:flex">
-        <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-700">
+        <span className="rounded border border-lagoon-200 bg-lagoon-50 px-1.5 py-0.5 text-lagoon-700">
           {bpm === null ? '—' : bpm.toFixed(1)}
         </span>
-        <span className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-slate-800">
+        <span className="rounded border border-chip-line bg-chip px-1.5 py-0.5 text-chip-ink">
           {keyLabel ?? '—'}
         </span>
-        <span className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-ink">
+        <span className="rounded border border-chip-line bg-chip px-1.5 py-0.5 text-ink">
           {energy === null ? '—' : energy.toFixed(2)}
         </span>
       </span>
@@ -317,7 +317,7 @@ export function AudioPlayer() {
       </div>
 
       {error && (
-        <span className="max-w-56 shrink-0 truncate text-xs text-rose-500">
+        <span className="max-w-56 shrink-0 truncate text-xs text-danger">
           {error}
         </span>
       )}

@@ -1,8 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, LogIn, LogOut, UserRound } from 'lucide-react'
+import {
+  ChevronDown,
+  Library,
+  LogIn,
+  LogOut,
+  Moon,
+  Sun,
+  UserRound,
+} from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useTheme } from '@/lib/theme'
+import type { ThemeMode } from '@/lib/theme'
+import { cn } from '@/lib/utils'
 import { useSetStore } from '@/store/useSetStore'
 import type { AuthUser } from '@/types'
+
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+]
 
 const AUTH_ERROR_PARAMS = ['error', 'error_code', 'error_description']
 
@@ -44,6 +60,9 @@ function AccountMenu({
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const setSetupOpen = useSetStore((state) => state.setSetupOpen)
+  const theme = useTheme((state) => state.theme)
+  const setTheme = useTheme((state) => state.setTheme)
 
   useEffect(() => {
     if (!open) return
@@ -79,7 +98,7 @@ function AccountMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-1.5 w-60 overflow-hidden rounded-lg border border-theme-line bg-theme-raised shadow-lg"
+          className="absolute right-0 top-full z-50 mt-1.5 w-60 overflow-hidden rounded-lg border border-theme-line bg-float shadow-lg"
         >
           <div className="flex items-center gap-2.5 border-b border-theme-line px-3 py-2.5">
             <Avatar user={user} size="size-8" />
@@ -94,6 +113,45 @@ function AccountMenu({
               </div>
             </div>
           </div>
+          <div
+            role="group"
+            aria-label="Appearance"
+            className="flex items-center gap-2 border-b border-theme-line px-3 py-2"
+          >
+            <span className="text-xs font-semibold text-ink">Appearance</span>
+            <div className="ml-auto flex overflow-hidden rounded-md border border-theme-line">
+              {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={theme === value}
+                  onClick={() => setTheme(value)}
+                  className={cn(
+                    'flex items-center gap-1 px-2 py-1 text-xs font-semibold',
+                    theme === value
+                      ? 'bg-accent text-on-accent'
+                      : 'text-ink-muted hover:bg-theme hover:text-ink',
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              setSetupOpen(true)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-ink hover:bg-theme"
+          >
+            <Library className="size-3.5" />
+            Library setup
+          </button>
           <button
             type="button"
             role="menuitem"
@@ -152,7 +210,7 @@ export function AccountButton() {
   return (
     <div className="flex items-center gap-2">
       {error && (
-        <span className="text-xs text-rose-600">Sign-in failed: {error}</span>
+        <span className="text-xs text-danger">Sign-in failed: {error}</span>
       )}
       {status.user ? (
         <AccountMenu user={status.user} onLogout={handleLogout} />

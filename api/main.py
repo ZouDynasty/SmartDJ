@@ -7,7 +7,6 @@ Run with::
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 import sys
@@ -19,10 +18,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from api import auth
+from api import auth, setup
 from api.artwork import extract_artwork
 from api.library import (
-    DEFAULT_DB_PATH,
+    DB_PATH,
     connect,
     fetch_audio_path,
     fetch_internal_id,
@@ -41,8 +40,6 @@ if str(_ML_DIR) not in sys.path:
 from candidate_retriever import CandidateRetriver
 from compatible_ranking import compatibility_ranking
 from nearest_path import Nearest_Path
-
-DB_PATH = Path(os.environ.get("SMARTDJ_DB", DEFAULT_DB_PATH)).expanduser()
 
 #: Vite dev server origins.
 ALLOWED_ORIGINS = (
@@ -77,6 +74,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(setup.router)
 
 #: Route-level dependencies run before parameter dependencies, so an
 #: unauthenticated request is rejected before the library database is opened.

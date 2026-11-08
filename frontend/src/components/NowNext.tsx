@@ -53,10 +53,10 @@ function toSlot(
 
 function keyBadgeClass(keyLabel: string | null): string {
   if (keyLabel?.endsWith('A')) {
-    return 'border-blue-200 bg-blue-50 text-blue-800'
+    return 'border-lagoon-200 bg-lagoon-50 text-lagoon-800'
   }
   if (keyLabel?.endsWith('B')) {
-    return 'border-slate-300 bg-slate-100 text-slate-800'
+    return 'border-chip-line bg-chip text-chip-ink'
   }
   return 'border-line bg-raised text-ink-muted'
 }
@@ -72,7 +72,7 @@ interface SlotCardProps {
 
 function SlotCard({ slot, role, isPlaying, onPlay, onHover, onDropTrack }: SlotCardProps) {
   const isCurrent = role === 'current'
-  const accent = isCurrent ? 'text-accent' : 'text-ink-muted'
+  const accent = isCurrent ? 'text-accent-ink' : 'text-ink-muted'
   const Icon = isCurrent ? Radio : Music4
   const { isOver, dropHandlers } = useTrackDrop(onDropTrack)
 
@@ -132,12 +132,12 @@ function SlotCard({ slot, role, isPlaying, onPlay, onHover, onDropTrack }: SlotC
             // Scrim stays dark: it sits over album art, not over the theme.
             'absolute inset-0 flex items-center justify-center rounded-md transition-opacity',
             isPlaying
-              ? 'bg-ink/45 opacity-100'
-              : 'bg-ink/50 opacity-0 group-hover:opacity-100',
+              ? 'bg-black/45 opacity-100'
+              : 'bg-black/50 opacity-0 group-hover:opacity-100',
           )}
         >
           {isPlaying ? (
-            <Pause className="size-5 fill-current text-theme-raised" />
+            <Pause className="size-5 fill-current text-white" />
           ) : (
             <Play className="size-5 fill-current text-white" />
           )}
@@ -161,7 +161,7 @@ function SlotCard({ slot, role, isPlaying, onPlay, onHover, onDropTrack }: SlotC
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 font-mono text-xs">
-        <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-700">
+        <span className="rounded border border-lagoon-200 bg-lagoon-50 px-1.5 py-0.5 text-lagoon-700">
           {slot.bpm === null ? '—' : slot.bpm.toFixed(1)}
         </span>
         <span
@@ -172,7 +172,7 @@ function SlotCard({ slot, role, isPlaying, onPlay, onHover, onDropTrack }: SlotC
         >
           {slot.keyLabel ?? '—'}
         </span>
-        <span className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-ink">
+        <span className="rounded border border-chip-line bg-chip px-1.5 py-0.5 text-ink">
           {slot.energy === null ? '—' : slot.energy.toFixed(2)}
         </span>
         <span className="text-ink-faint">
@@ -217,7 +217,7 @@ function TransitionSummary({
     <div className="flex shrink-0 flex-col items-center gap-1 px-3">
       <ArrowRight className="size-4 text-ink-muted" />
       <div className="flex items-center gap-2 font-mono text-xs whitespace-nowrap">
-        <span className={bpmSafe ? 'text-ink-muted' : 'text-rose-600'}>
+        <span className={bpmSafe ? 'text-ink-muted' : 'text-danger'}>
           {bpmDelta === null
             ? 'BPM —'
             : `${bpmDelta >= 0 ? '+' : ''}${bpmDelta.toFixed(1)} BPM`}
@@ -228,7 +228,7 @@ function TransitionSummary({
             relation === null
               ? 'text-ink-muted'
               : relation.compatible
-                ? 'text-blue-700'
+                ? 'text-lagoon-700'
                 : 'text-ink'
           }
         >

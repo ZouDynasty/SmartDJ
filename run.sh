@@ -32,7 +32,7 @@ for port in "$API_PORT" "$WEB_PORT"; do
 done
 
 if [ ! -f data/library.sqlite ]; then
-  printf 'warning: data/library.sqlite is missing; the UI will report missing-database\n' >&2
+  printf 'note: data/library.sqlite is missing; sign in and complete library setup to import it\n' >&2
 fi
 
 "$PYTHON" -m uvicorn api.main:app --reload --port "$API_PORT" &
