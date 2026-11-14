@@ -67,6 +67,26 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return connection
 
 
+#: Rekordbox stores ratings as 0-255, 51 per star.
+RATING_PER_STAR = 51
+
+
+def write_rating(db_path: Path, track_id: int, stars: int) -> bool:
+    """Save a 0-5 star rating in Rekordbox's 0-255 scale. False if the track is unknown."""
+    if not db_path.exists():
+        raise FileNotFoundError(f"Library database not found: {db_path}")
+    connection = sqlite3.connect(db_path)
+    try:
+        with connection:
+            cursor = connection.execute(
+                "UPDATE tracks SET rating = ? WHERE track_id = ?",
+                (stars * RATING_PER_STAR, track_id),
+            )
+        return cursor.rowcount > 0
+    finally:
+        connection.close()
+
+
 def _as_float(value: Any) -> float | None:
     try:
         return float(value)

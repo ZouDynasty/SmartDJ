@@ -258,19 +258,45 @@ function ColumnResizer({
   )
 }
 
-function RatingStars({ rating }: { rating: number }) {
+/** Click a star to rate; click the current rating again to clear it. */
+function RatingStars({
+  rating,
+  onRate,
+}: {
+  rating: number
+  onRate: (stars: number) => void
+}) {
+  const [hover, setHover] = useState<number | null>(null)
+  const shown = hover ?? rating
   return (
-    <span className="flex items-center gap-0.5" title={`${rating} of 5`}>
+    <span
+      className="flex items-center"
+      title={`${rating} of 5`}
+      onMouseLeave={() => setHover(null)}
+      // Keeps clicks on the stars from selecting, dragging or adding the row.
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
       {[1, 2, 3, 4, 5].map((star) => (
-        <Star
+        <button
           key={star}
-          className={cn(
-            'size-3',
-            star <= rating
-              ? 'fill-accent text-accent-ink'
-              : 'text-ink-faint',
-          )}
-        />
+          type="button"
+          draggable={false}
+          aria-label={star === rating ? 'Clear rating' : `Rate ${star} of 5`}
+          onMouseEnter={() => setHover(star)}
+          onClick={() => onRate(star === rating ? 0 : star)}
+          className="cursor-pointer p-px"
+        >
+          <Star
+            className={cn(
+              'size-3.5',
+              star <= shown
+                ? 'fill-accent text-accent-ink'
+                : 'text-ink-faint',
+            )}
+          />
+        </button>
       ))}
     </span>
   )
@@ -293,6 +319,8 @@ export function TrackLibrary() {
   const selectedTrack = useSetStore((state) => state.selectedTrack)
   const setSelectedTrack = useSetStore((state) => state.setSelectedTrack)
   const playTrack = useSetStore((state) => state.playTrack)
+  const rateTrack = useSetStore((state) => state.rateTrack)
+  const setShufflePool = useSetStore((state) => state.setShufflePool)
   const playingTrack = useSetStore((state) => state.playingTrack)
   const isPlaying = useSetStore((state) => state.isPlaying)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -457,6 +485,11 @@ export function TrackLibrary() {
     showRanking,
     sortDirection,
   ])
+
+  // Shuffle draws from whatever the filters currently show.
+  useEffect(() => {
+    setShufflePool(visibleTracks)
+  }, [visibleTracks, setShufflePool])
 
   const virtualizer = useVirtualizer({
     count: visibleTracks.length,
@@ -778,7 +811,10 @@ export function TrackLibrary() {
                       {energy === null ? '—' : energy.toFixed(2)}
                     </span>
                   </span>
-                  <RatingStars rating={trackRating(track)} />
+                  <RatingStars
+                    rating={trackRating(track)}
+                    onRate={(stars) => rateTrack(track.track_id, stars)}
+                  />
                   {showRanking && (
                     <span
                       className="flex min-w-0 items-center justify-end gap-1.5 overflow-hidden"

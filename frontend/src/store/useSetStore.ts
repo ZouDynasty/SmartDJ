@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { setTrackRating } from '@/lib/api'
 import { deleteSavedSetRow, upsertSavedSets } from '@/lib/savedSets'
 import type {
   AuthStatus,
@@ -20,6 +21,28 @@ function createInstanceId(trackId: number): string {
     return globalCrypto.randomUUID()
   }
   return `${trackId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+const MAX_HISTORY = 50
+
+/** Loads `track` in the transport, remembering the track it replaces for Back. */
+function switchTo(
+  state: { playingTrack: Track | null; playHistory: Track[] },
+  track: Track,
+): { playingTrack: Track; playHistory: Track[] } {
+  const previous = state.playingTrack
+  const playHistory =
+    previous && previous.track_id !== track.track_id
+      ? [...state.playHistory, previous].slice(-MAX_HISTORY)
+      : state.playHistory
+  return { playingTrack: track, playHistory }
+}
+
+/** Random track from the pool, never the one just played unless it is the only one. */
+function pickRandomTrack(pool: Track[], current: Track | null): Track | null {
+  const choices = pool.filter((track) => track.track_id !== current?.track_id)
+  if (choices.length === 0) return null
+  return choices[Math.floor(Math.random() * choices.length)]
 }
 
 function createSetItem(track: Track): SetItem {
@@ -80,6 +103,12 @@ interface SetStore {
   /** Track loaded in the transport bar, streamed from its local file. */
   playingTrack: Track | null
   isPlaying: boolean
+  /** When on, a finished track is followed by a random one from `shufflePool`. */
+  shuffleOn: boolean
+  /** What shuffle draws from: the library as currently filtered. */
+  shufflePool: Track[]
+  /** Tracks played before the current one, oldest first, for the Back button. */
+  playHistory: Track[]
 
   /** Graph controls. */
   zoom: number
@@ -99,6 +128,8 @@ interface SetStore {
   setCatalogStatus: (status: SetStore['catalogStatus']) => void
   setCatalogError: (message: string | null) => void
   bumpLibraryVersion: () => void
+  /** Rate a track 0–5 stars; shown at once, saved in the background. */
+  rateTrack: (trackId: number, stars: number) => void
   setSetupOpen: (open: boolean) => void
 
   setActiveQueue: (queue: SetItem[]) => void
@@ -111,7 +142,8 @@ interface SetStore {
   dropOnDeck: (index: 0 | 1, track: Track) => void
   /** Add a Dijkstra route to the set: start and goal if missing, intermediates between. */
   insertMixPath: (pathTracks: Track[]) => void
-  addTrackToSet: (track: Track) => void
+  /** Appends the track, or inserts it at `index` when given. */
+  addTrackToSet: (track: Track, index?: number) => void
   removeSetItem: (instanceId: string) => void
   moveSetItem: (fromIndex: number, toIndex: number) => void
   clearSet: () => void
@@ -129,6 +161,15 @@ interface SetStore {
   playTrack: (track: Track) => void
   setIsPlaying: (playing: boolean) => void
   stopPlayback: () => void
+  setShufflePool: (tracks: Track[]) => void
+  /** Turn shuffle on or off; turning it on with nothing loaded starts a track. */
+  toggleShuffle: () => void
+  /** Called when a track finishes: continues with a random track or stops. */
+  handleTrackEnded: () => void
+  /** Next track: random while shuffling, otherwise the next row of the filtered library. */
+  skipTrack: () => void
+  /** Go back to the track played before this one. */
+  playPrevious: () => void
 
   setZoom: (zoom: number) => void
   zoomIn: () => void
@@ -144,7 +185,7 @@ interface SetStore {
   clearGenreFilters: () => void
 }
 
-export const useSetStore = create<SetStore>()((set) => ({
+export const useSetStore = create<SetStore>()((set, get) => ({
   auth: null,
   decks: [null, null],
 
@@ -164,6 +205,9 @@ export const useSetStore = create<SetStore>()((set) => ({
 
   playingTrack: null,
   isPlaying: false,
+  shuffleOn: false,
+  shufflePool: [],
+  playHistory: [],
 
   zoom: MIN_ZOOM,
   metricView: 'all',
@@ -189,6 +233,9 @@ export const useSetStore = create<SetStore>()((set) => ({
       highlightSource: null,
       playingTrack: null,
       isPlaying: false,
+      shuffleOn: false,
+      shufflePool: [],
+      playHistory: [],
     }),
 
   setCatalog: (tracks) =>
@@ -207,15 +254,45 @@ export const useSetStore = create<SetStore>()((set) => ({
   setCatalogError: (message) => set({ catalogError: message }),
   bumpLibraryVersion: () =>
     set((state) => ({ libraryVersion: state.libraryVersion + 1 })),
+  rateTrack: (trackId, stars) => {
+    // Rekordbox keeps ratings as 0–255, 51 per star.
+    const apply = (rating: number) => {
+      const update = (track: Track) =>
+        track.track_id === trackId ? { ...track, rating } : track
+      set((state) => ({
+        catalog: state.catalog.map(update),
+        decks: state.decks.map((track) =>
+          track ? update(track) : track,
+        ) as [Track | null, Track | null],
+        selectedTrack: state.selectedTrack ? update(state.selectedTrack) : null,
+      }))
+    }
+    const previous = get().catalog.find((track) => track.track_id === trackId)
+    const previousRating = previous?.rating ?? 0
+    apply(stars * 51)
+    setTrackRating(trackId, stars).catch((cause: unknown) => {
+      apply(previousRating)
+      console.error('Could not save rating', cause)
+    })
+  },
+
   setSetupOpen: (open) => set({ setupOpen: open }),
 
   setActiveQueue: (queue) => set({ activeQueue: queue }),
 
   setDeck: (index, track) =>
     set((state) => {
+      const previous = state.decks[index]
       const decks: [Track | null, Track | null] = [...state.decks]
       decks[index] = track
-      return { decks }
+      // Removing the loaded track also stops it if it is the one playing.
+      const removedPlaying =
+        track === null &&
+        previous !== null &&
+        state.playingTrack?.track_id === previous.track_id
+      return removedPlaying
+        ? { decks, playingTrack: null, isPlaying: false, shuffleOn: false }
+        : { decks }
     }),
 
   dropOnDeck: (index, track) =>
@@ -227,7 +304,7 @@ export const useSetStore = create<SetStore>()((set) => ({
         previous !== null &&
         previous.track_id !== track.track_id &&
         state.playingTrack?.track_id === previous.track_id
-      return replacesLoaded ? { decks, playingTrack: track } : { decks }
+      return replacesLoaded ? { decks, ...switchTo(state, track) } : { decks }
     }),
 
   insertMixPath: (pathTracks) =>
@@ -258,10 +335,16 @@ export const useSetStore = create<SetStore>()((set) => ({
       }
     }),
 
-  addTrackToSet: (track) =>
-    set((state) => ({
-      activeQueue: [...state.activeQueue, createSetItem(track)],
-    })),
+  addTrackToSet: (track, index) =>
+    set((state) => {
+      const queue = [...state.activeQueue]
+      const at =
+        index === undefined
+          ? queue.length
+          : Math.min(Math.max(index, 0), queue.length)
+      queue.splice(at, 0, createSetItem(track))
+      return { activeQueue: queue }
+    }),
 
   removeSetItem: (instanceId) =>
     set((state) => ({
@@ -372,10 +455,60 @@ export const useSetStore = create<SetStore>()((set) => ({
     set((state) =>
       state.playingTrack?.track_id === track.track_id
         ? { isPlaying: !state.isPlaying }
-        : { playingTrack: track, isPlaying: true },
+        : { ...switchTo(state, track), isPlaying: true },
     ),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
-  stopPlayback: () => set({ playingTrack: null, isPlaying: false }),
+  stopPlayback: () =>
+    set({ playingTrack: null, isPlaying: false, shuffleOn: false }),
+
+  setShufflePool: (tracks) => set({ shufflePool: tracks }),
+
+  toggleShuffle: () =>
+    set((state) => {
+      if (state.shuffleOn) return { shuffleOn: false }
+      // Playing or paused already: let it finish, then shuffle takes over.
+      if (state.playingTrack) return { shuffleOn: true }
+      const next = pickRandomTrack(state.shufflePool, null)
+      return next
+        ? { shuffleOn: true, ...switchTo(state, next), isPlaying: true }
+        : {}
+    }),
+
+  handleTrackEnded: () =>
+    set((state) => {
+      if (!state.shuffleOn) return { isPlaying: false }
+      const next = pickRandomTrack(state.shufflePool, state.playingTrack)
+      return next
+        ? { ...switchTo(state, next), isPlaying: true }
+        : { isPlaying: false }
+    }),
+
+  skipTrack: () =>
+    set((state) => {
+      const current = state.playingTrack
+      if (!current) return {}
+      let next: Track | null
+      if (state.shuffleOn) {
+        next = pickRandomTrack(state.shufflePool, current)
+      } else {
+        const index = state.shufflePool.findIndex(
+          (track) => track.track_id === current.track_id,
+        )
+        next = state.shufflePool[index + 1] ?? null
+      }
+      return next ? { ...switchTo(state, next), isPlaying: true } : {}
+    }),
+
+  playPrevious: () =>
+    set((state) => {
+      const previous = state.playHistory[state.playHistory.length - 1]
+      if (!previous) return {}
+      return {
+        playingTrack: previous,
+        playHistory: state.playHistory.slice(0, -1),
+        isPlaying: true,
+      }
+    }),
 
   setZoom: (zoom) => set({ zoom: clampZoom(zoom) }),
   zoomIn: () => set((state) => ({ zoom: clampZoom(state.zoom * ZOOM_STEP) })),

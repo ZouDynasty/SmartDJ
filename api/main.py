@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from api import auth, setup
 from api.artwork import extract_artwork
@@ -30,6 +31,7 @@ from api.library import (
     fetch_track_ids_by_internal_ids,
     fetch_tracks,
     fetch_tracks_by_internal_ids,
+    write_rating,
 )
 
 _ML_DIR = Path(__file__).resolve().parent.parent / "ml"
@@ -148,6 +150,22 @@ def get_track(
     if track is None:
         raise HTTPException(status_code=404, detail=f"Unknown track_id {track_id}")
     return track
+
+
+class RatingRequest(BaseModel):
+    stars: int = Field(ge=0, le=5)
+
+
+@app.post("/api/tracks/{track_id}/rating", dependencies=SIGNED_IN)
+def set_track_rating(track_id: int, request: RatingRequest) -> dict[str, Any]:
+    """Set a track's star rating (0 clears it)."""
+    try:
+        found = write_rating(DB_PATH, track_id, request.stars)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Unknown track_id {track_id}")
+    return {"track_id": track_id, "stars": request.stars}
 
 
 @app.get("/api/playlists", dependencies=SIGNED_IN)

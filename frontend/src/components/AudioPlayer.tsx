@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pause, Play, Volume2, X } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Pause, Play, Shuffle, SkipBack, SkipForward, Volume2, X } from 'lucide-react'
 import { Artwork } from '@/components/Artwork'
 import { Visualizer } from '@/components/Visualizer'
 import { cn } from '@/lib/utils'
-import { trackAudioUrl } from '@/lib/api'
+import { trackArtworkUrl, trackAudioUrl } from '@/lib/api'
 import {
   formatDuration,
   normalizedEnergy,
@@ -14,6 +15,65 @@ import {
 } from '@/lib/setMath'
 import { useSetStore } from '@/store/useSetStore'
 
+/** Back restarts the song once it is further in than this. */
+const RESTART_AFTER_SEC = 3
+
+/** Small icon button; blurs after a click so Space stays the library toggle. */
+function TransportIcon({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={(event) => {
+        onClick()
+        event.currentTarget.blur()
+      }}
+      className="flex size-7 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-theme hover:text-accent-ink"
+    >
+      {children}
+    </button>
+  )
+}
+
+/** Icon-only toggle: keeps playing random tracks from the filtered library. */
+function ShuffleButton() {
+  const shuffleOn = useSetStore((state) => state.shuffleOn)
+  const toggleShuffle = useSetStore((state) => state.toggleShuffle)
+  const poolEmpty = useSetStore((state) => state.shufflePool.length === 0)
+  return (
+    <button
+      type="button"
+      aria-label="Shuffle"
+      aria-pressed={shuffleOn}
+      title="Shuffle: keep playing random tracks from the filtered library"
+      disabled={poolEmpty}
+      onClick={(event) => {
+        toggleShuffle()
+        // Frees Space for the library toggle instead of re-pressing this button.
+        event.currentTarget.blur()
+      }}
+      className={cn(
+        'flex size-7 shrink-0 items-center justify-center rounded-full transition-colors',
+        shuffleOn
+          ? 'bg-accent text-on-accent'
+          : 'text-ink-muted hover:bg-theme hover:text-accent-ink',
+        poolEmpty && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-ink-muted',
+      )}
+    >
+      <Shuffle className="size-3.5" />
+    </button>
+  )
+}
+
 /**
  * Transport bar streaming the selected track's local file through the API.
  * Seeking relies on the server honouring HTTP Range requests.
@@ -23,6 +83,9 @@ export function AudioPlayer() {
   const isPlaying = useSetStore((state) => state.isPlaying)
   const setIsPlaying = useSetStore((state) => state.setIsPlaying)
   const stopPlayback = useSetStore((state) => state.stopPlayback)
+  const handleTrackEnded = useSetStore((state) => state.handleTrackEnded)
+  const skipTrack = useSetStore((state) => state.skipTrack)
+  const playPrevious = useSetStore((state) => state.playPrevious)
   const mediaToken = useSetStore((state) => state.auth?.media_token ?? null)
 
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -70,9 +133,77 @@ export function AudioPlayer() {
     setPosition(seconds)
   }, [])
 
+  /** Past the first few seconds, Back restarts the song; at the start it goes to the last one played. */
+  const handlePrevious = useCallback(() => {
+    const audio = audioRef.current
+    if (audio && audio.currentTime > RESTART_AFTER_SEC) {
+      handleSeek(0)
+      return
+    }
+    if (useSetStore.getState().playHistory.length > 0) playPrevious()
+    else handleSeek(0)
+  }, [handleSeek, playPrevious])
+
+  // Keyboard media keys (F7/F8/F9 on a Mac) and the system Now Playing widget.
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    const session = navigator.mediaSession
+    const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
+      [
+        'play',
+        () => {
+          const state = useSetStore.getState()
+          if (state.playingTrack) state.setIsPlaying(true)
+        },
+      ],
+      ['pause', () => useSetStore.getState().setIsPlaying(false)],
+      ['previoustrack', handlePrevious],
+      ['nexttrack', skipTrack],
+    ]
+    for (const [action, handler] of handlers) {
+      try {
+        session.setActionHandler(action, handler)
+      } catch {
+        /* this browser does not support the action */
+      }
+    }
+    return () => {
+      for (const [action] of handlers) {
+        try {
+          session.setActionHandler(action, null)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }, [handlePrevious, skipTrack])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    navigator.mediaSession.metadata = playingTrack
+      ? new MediaMetadata({
+          title: trackTitle(playingTrack),
+          artist: trackArtist(playingTrack),
+          artwork: [
+            { src: trackArtworkUrl(playingTrack.track_id, mediaToken) },
+          ],
+        })
+      : null
+  }, [playingTrack, mediaToken])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    navigator.mediaSession.playbackState = !playingTrack
+      ? 'none'
+      : isPlaying
+        ? 'playing'
+        : 'paused'
+  }, [playingTrack, isPlaying])
+
   if (!playingTrack) {
     return (
       <footer className="flex shrink-0 items-center gap-3 bg-theme px-4 py-2.5">
+        <ShuffleButton />
         <span className="text-xs text-ink-muted">Play a track to start.</span>
       </footer>
     )
@@ -104,7 +235,7 @@ export function AudioPlayer() {
         onTimeUpdate={(event) => {
           setPosition(event.currentTarget.currentTime)
         }}
-        onEnded={() => setIsPlaying(false)}
+        onEnded={handleTrackEnded}
         onError={(event) => {
           if (event.currentTarget.error?.code === MediaError.MEDIA_ERR_ABORTED) return
           setError('Could not stream this file — check the API and file path.')
@@ -154,13 +285,6 @@ export function AudioPlayer() {
         </span>
       </span>
 
-      <Visualizer
-        audioRef={audioRef}
-        isPlaying={isPlaying}
-        trackId={playingTrack.track_id}
-        className="hidden h-8 w-28 shrink-0 md:block"
-      />
-
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="shrink-0 font-mono text-xs text-ink-muted">
           {formatDuration(position)}
@@ -179,6 +303,23 @@ export function AudioPlayer() {
           {formatDuration(effectiveDuration)}
         </span>
       </div>
+
+      <div className="flex shrink-0 items-center gap-0.5">
+        <TransportIcon label="Back" onClick={handlePrevious}>
+          <SkipBack className="size-3.5 fill-current" />
+        </TransportIcon>
+        <TransportIcon label="Skip" onClick={skipTrack}>
+          <SkipForward className="size-3.5 fill-current" />
+        </TransportIcon>
+        <ShuffleButton />
+      </div>
+
+      <Visualizer
+        audioRef={audioRef}
+        isPlaying={isPlaying}
+        trackId={playingTrack.track_id}
+        className="hidden h-8 w-28 shrink-0 md:block"
+      />
 
       <div className="hidden shrink-0 items-center gap-1.5 lg:flex">
         <Volume2 className="size-3.5 text-ink-muted" />

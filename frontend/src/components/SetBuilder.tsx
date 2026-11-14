@@ -26,6 +26,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { useTrackDrop } from '@/lib/dragTrack'
 import { cn } from '@/lib/utils'
 import { buildSetPoints, formatDuration } from '@/lib/setMath'
 import type { SetPoint } from '@/lib/setMath'
@@ -185,6 +186,7 @@ export function SetBuilder({
   const loadedSetId = useSetStore((state) => state.loadedSetId)
   const moveSetItem = useSetStore((state) => state.moveSetItem)
   const removeSetItem = useSetStore((state) => state.removeSetItem)
+  const addTrackToSet = useSetStore((state) => state.addTrackToSet)
   const clearSet = useSetStore((state) => state.clearSet)
   const saveSet = useSetStore((state) => state.saveSet)
   const loadSavedSet = useSetStore((state) => state.loadSavedSet)
@@ -259,9 +261,27 @@ export function SetBuilder({
 
   const canSave = activeQueue.length > 0 && setName.trim().length > 0
 
+  /** Dropping a library track adds it where it lands: before the first card whose middle is below the cursor. */
+  const { isOver, dropHandlers } = useTrackDrop((track, event) => {
+    const cards = listRef.current?.querySelectorAll<HTMLElement>('li[data-instance-id]')
+    let index = activeQueue.length
+    cards?.forEach((card, cardIndex) => {
+      if (index !== activeQueue.length) return
+      const box = card.getBoundingClientRect()
+      if (event.clientY < box.top + box.height / 2) index = cardIndex
+    })
+    addTrackToSet(track, index)
+  })
+
   if (collapsed) {
     return (
-      <section className="flex w-10 shrink-0 flex-col items-center gap-3 bg-theme py-2.5">
+      <section
+        {...dropHandlers}
+        className={cn(
+          'flex w-10 shrink-0 flex-col items-center gap-3 bg-theme py-2.5',
+          isOver && 'shadow-[inset_0_0_0_2px_var(--color-accent)]',
+        )}
+      >
         <button
           type="button"
           onClick={onToggle}
@@ -284,7 +304,11 @@ export function SetBuilder({
 
   return (
     <section
-      className="flex min-w-0 shrink-0 flex-col bg-theme"
+      {...dropHandlers}
+      className={cn(
+        'flex min-w-0 shrink-0 flex-col bg-theme',
+        isOver && 'shadow-[inset_0_0_0_2px_var(--color-accent)]',
+      )}
       style={{ width }}
     >
       <header className="flex shrink-0 flex-col gap-2 border-b border-theme-line bg-theme-raised px-3 py-2.5">
@@ -361,7 +385,7 @@ export function SetBuilder({
             )}
           </button>
           <span className="font-mono text-xs text-ink-muted">
-            drag to reorder
+            drag to reorder or add
           </span>
           {activeQueue.length > 0 && (
             <button
@@ -467,8 +491,7 @@ export function SetBuilder({
       {points.length === 0 ? (
         <div className="m-3 rounded-lg border border-dashed border-theme-line bg-theme-raised px-4 py-8 text-center">
           <p className="text-sm text-ink-muted">
-            Queue is empty. Drop tracks in the two players, then find the shortest
-            mixing path.
+            Drag tracks here.
           </p>
         </div>
       ) : (

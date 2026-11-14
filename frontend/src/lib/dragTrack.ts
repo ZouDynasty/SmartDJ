@@ -72,8 +72,10 @@ export function getDraggedTrackId(dataTransfer: DataTransfer): number | null {
   return Number.isFinite(trackId) ? trackId : null
 }
 
-/** Drop-zone handlers for the two player slots. */
-export function useTrackDrop(onDropTrack: (track: Track) => void) {
+/** Drop-zone handlers for the player slots and the set queue. */
+export function useTrackDrop(
+  onDropTrack: (track: Track, event: DragEvent<HTMLElement>) => void,
+) {
   const [isOver, setIsOver] = useState(false)
   const depthRef = useRef(0)
 
@@ -110,7 +112,7 @@ export function useTrackDrop(onDropTrack: (track: Track) => void) {
       const track = useSetStore
         .getState()
         .catalog.find((entry) => entry.track_id === trackId)
-      if (track) onDropTrack(track)
+      if (track) onDropTrack(track, event)
     },
     [onDropTrack, reset],
   )

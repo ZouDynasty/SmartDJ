@@ -95,6 +95,63 @@ const EMPTY_PLACEHOLDER: SetPoint[] = [
   },
 ]
 
+/** Space the chart's header, axis and margins take away from the panel height. */
+const CHART_CHROME_PX = 110
+
+/** A slot shorter than this can't fit a readable label for every key. */
+const MIN_KEY_SLOT_PX = 13
+
+/**
+ * Camelot tick: minor (A) keys in the BPM blue, major (B) keys in grey. When
+ * the axis is too short for all 24 labels, B keys shrink to a small tick mark
+ * between the A labels instead of a crowded label.
+ */
+function KeyTick({
+  x,
+  y,
+  payload,
+  fontSize,
+  showMajorLabels,
+  palette,
+}: {
+  x?: number | string
+  y?: number | string
+  payload?: { value: number }
+  fontSize: number
+  showMajorLabels: boolean
+  palette: { bpm: string; tick: string }
+}) {
+  if (x === undefined || y === undefined || payload === undefined) return null
+  const label = camelotLabel(payload.value)
+  const isMinor = label.endsWith('A')
+  if (!isMinor && !showMajorLabels) {
+    return (
+      <line
+        x1={Number(x)}
+        x2={Number(x) + 3}
+        y1={y}
+        y2={y}
+        stroke={palette.tick}
+        strokeOpacity={0.4}
+      />
+    )
+  }
+  return (
+    <text
+      x={Number(x) + 4}
+      y={y}
+      dy={fontSize * 0.35}
+      textAnchor="start"
+      fontSize={fontSize}
+      fontWeight={isMinor ? 600 : 400}
+      fill={isMinor ? palette.bpm : palette.tick}
+      fillOpacity={isMinor ? 1 : 0.75}
+    >
+      {label}
+    </text>
+  )
+}
+
 function tickInterval(spanSec: number, targetTicks: number): number {
   const candidates = [15, 30, 60, 120, 180, 300, 600, 900, 1800, 3600]
   for (const candidate of candidates) {
@@ -186,6 +243,10 @@ export function SetGraph({
   const spanSec = points.length > 0 ? totalSec : EMPTY_SPAN_SEC
   const timeTicks = useMemo(() => buildTimeTicks(spanSec, zoom), [spanSec, zoom])
   const bpmScale = useMemo(() => bpmDomain(points), [points])
+  // 24 key labels share the plot height; when it is short, label only the A keys.
+  const keySlotPx = (height - CHART_CHROME_PX) / CAMELOT_KEYS.length
+  const showMajorLabels = keySlotPx >= MIN_KEY_SLOT_PX
+  const keyFontSize = showMajorLabels ? 11 : 10.5
 
   const isVisible = useCallback(
     (series: SeriesKey) => metricView === 'all' || metricView === series,
@@ -348,6 +409,7 @@ export function SetGraph({
 
               <YAxis
                 yAxisId="bpm"
+                hide={!isVisible('bpm')}
                 orientation="left"
                 domain={bpmScale}
                 allowDecimals={false}
@@ -357,6 +419,7 @@ export function SetGraph({
               />
               <YAxis
                 yAxisId="energy"
+                hide={!isVisible('energy')}
                 orientation="left"
                 domain={[0, 1]}
                 ticks={ENERGY_TICKS}
@@ -367,15 +430,22 @@ export function SetGraph({
               />
               <YAxis
                 yAxisId="key"
+                hide={!isVisible('key')}
                 orientation="right"
                 type="number"
-                domain={[0, CAMELOT_KEYS.length - 1]}
+                // Half a slot of padding keeps the first and last labels off the edges.
+                domain={[-0.5, CAMELOT_KEYS.length - 0.5]}
                 ticks={KEY_TICKS}
-                tickFormatter={camelotLabel}
                 interval={0}
                 stroke={palette.key}
-                tick={tickStyle}
-                width={44}
+                tick={
+                  <KeyTick
+                    fontSize={keyFontSize}
+                    showMajorLabels={showMajorLabels}
+                    palette={palette}
+                  />
+                }
+                width={34}
               />
 
               <Tooltip

@@ -6,7 +6,7 @@ Local DJ set builder. It serves your Rekordbox library from SQLite, streams the 
 
 **Catalog** (bottom)
 
-- Searchable, sortable table of your library: title, artist, genre, BPM, key, energy, rating.
+- Searchable, sortable table of your library: title, artist, genre, BPM, key, energy, rating (click the stars to change it).
 - Genre tags filter the table and limit the shortest mixing path.
 - Drag column edges to resize (double-click to fit the longest name).
 - **Show compatible** ranks tracks that mix with the selected one (same or adjacent key, BPM within 10%) with a 0–1 score. Hover a score for the breakdown.
@@ -21,7 +21,7 @@ Local DJ set builder. It serves your Rekordbox library from SQLite, streams the 
 
 **Set queue** (right)
 
-- Drag to reorder, **×** to remove, **Clear** to empty.
+- Drag tracks in from the library, where you drop them sets their position. Drag cards to reorder, **×** to remove, **Clear** to empty.
 - Name and **Save** a set (same name overwrites). **Saved** loads or deletes sets, stored in your Supabase account.
 
 **Set trajectory** (top)
@@ -31,6 +31,9 @@ Local DJ set builder. It serves your Rekordbox library from SQLite, streams the 
 **Player** (bottom bar)
 
 - Streams the original file with seek and volume.
+- Shuffle keeps playing random tracks from whatever the library filters show.
+- Skip plays the next random track while shuffling, otherwise the next row in the library. Back restarts the song, or from the start goes to the last one played.
+- Mac media keys (F7 back, F8 play/pause, F9 skip) control playback, and the song shows in the system Now Playing widget.
 
 **Account**
 

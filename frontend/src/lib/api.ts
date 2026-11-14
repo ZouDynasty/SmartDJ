@@ -64,6 +64,15 @@ export function trackArtworkUrl(trackId: number, mediaToken: string | null): str
   return mediaToken ? `${url}?${new URLSearchParams({ token: mediaToken })}` : url
 }
 
+/** Saves a 0–5 star rating for one track. */
+export function setTrackRating(trackId: number, stars: number): Promise<{ stars: number }> {
+  return apiFetch(`/tracks/${trackId}/rating`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stars }),
+  })
+}
+
 export function getPlaylists(signal?: AbortSignal): Promise<Playlist[]> {
   return apiFetch<Playlist[]>('/playlists', { signal })
 }

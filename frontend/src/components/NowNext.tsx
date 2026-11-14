@@ -97,7 +97,7 @@ function SlotCard({
       data-deck
       onClick={onSelect}
       className={cn(
-        'group relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors',
+        'group relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition-colors',
         isOver || isSelected
           ? 'border-accent bg-theme-raised'
           : 'border-theme-line bg-theme hover:bg-theme-raised',
@@ -116,7 +116,7 @@ function SlotCard({
         <Artwork
           trackId={slot.track.track_id}
           title={slot.title}
-          className="size-12"
+          className="size-11"
         />
         <span
           className={cn(
@@ -136,28 +136,34 @@ function SlotCard({
       </button>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-ink">{slot.title}</p>
-        <p className="truncate text-xs text-ink-muted">{slot.artist}</p>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1.5 font-mono text-xs">
-        <span className="rounded border border-lagoon-200 bg-lagoon-50 px-1.5 py-0.5 text-lagoon-700">
-          {slot.bpm === null ? '—' : slot.bpm.toFixed(1)}
-        </span>
-        <span
-          className={cn(
-            'rounded border px-1.5 py-0.5',
-            keyBadgeClass(slot.keyLabel),
-          )}
-        >
-          {slot.keyLabel ?? '—'}
-        </span>
-        <span className="rounded border border-chip-line bg-chip px-1.5 py-0.5 text-ink">
-          {slot.energy === null ? '—' : slot.energy.toFixed(2)}
-        </span>
-        <span className="text-ink-faint">
-          {formatDuration(slot.durationSec)}
-        </span>
+        <p className="truncate pr-4 text-sm font-semibold text-ink">
+          {slot.title}
+        </p>
+        {/* Artist on the left, numbers right-aligned on the same line. */}
+        <div className="mt-1.5 flex items-center gap-3">
+          <p className="min-w-0 flex-1 truncate text-xs text-ink">
+            {slot.artist}
+          </p>
+          <div className="flex shrink-0 items-center gap-1.5 font-mono text-xs">
+            <span className="rounded border border-lagoon-200 bg-lagoon-50 px-1.5 py-0.5 font-medium text-lagoon-800">
+              {slot.bpm === null ? '—' : slot.bpm.toFixed(1)}
+            </span>
+            <span
+              className={cn(
+                'rounded border px-1.5 py-0.5 font-medium',
+                keyBadgeClass(slot.keyLabel),
+              )}
+            >
+              {slot.keyLabel ?? '—'}
+            </span>
+            <span className="rounded border border-chip-line bg-chip px-1.5 py-0.5 font-medium text-ink">
+              {slot.energy === null ? '—' : slot.energy.toFixed(2)}
+            </span>
+            <span className="text-ink-muted">
+              {formatDuration(slot.durationSec)}
+            </span>
+          </div>
+        </div>
       </div>
 
       <button
@@ -279,6 +285,34 @@ export function NowNext() {
       window.removeEventListener('pointerdown', handlePointer)
     }
   }, [selected, setDeck])
+
+  // Space plays or pauses the selected player track. It runs in the capture phase
+  // and stops there, so the library toggle in App only sees Space when no track
+  // is selected.
+  useEffect(() => {
+    if (selected === null) return
+    const track = decks[selected]
+    if (!track) return
+
+    const handleSpace = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat) return
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest('input, textarea, select, button, a, [role]'))
+      ) {
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      playTrack(track)
+    }
+
+    window.addEventListener('keydown', handleSpace, true)
+    return () => window.removeEventListener('keydown', handleSpace, true)
+  }, [selected, decks, playTrack])
 
   const handleRemove = useCallback(
     (index: DeckIndex) => {

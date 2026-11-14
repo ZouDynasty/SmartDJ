@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Headphones, TriangleAlert } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
+import { Logo } from '@/components/Logo'
 import { AccountButton } from '@/components/AccountButton'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { LibrarySetup } from '@/components/LibrarySetup'
@@ -170,7 +171,7 @@ function App() {
   return (
     <div className="flex h-svh min-h-0 flex-col gap-px overflow-hidden bg-seam font-sans text-ink">
       <header className="flex shrink-0 items-center gap-3 bg-theme px-4 py-2.5">
-        <Headphones className="size-4 text-accent-ink" />
+        <Logo className="size-7" />
         <h1 className="text-sm font-semibold tracking-tight text-ink">
           SmartDJ
           <span className="ml-2 font-normal text-ink-muted">Set Builder</span>
