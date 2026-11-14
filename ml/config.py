@@ -31,7 +31,8 @@ MISSING_ENERGY_COST = 0.5           # energy cost when energy is unknown
 PATH_CANDIDATE_LIMIT = 1000         # neighbours fetched per track in the search
 PATH_MAX_HOPS = 30                  # default max transitions (the API sets its own)
 TOWARD_GOAL_MULTIPLIER = 0.9        # cost discount for moving toward the goal
-AWAY_FROM_GOAL_MULTIPLIER = 1 / TOWARD_GOAL_MULTIPLIER  # penalty for moving away
+AWAY_FROM_GOAL_MULTIPLIER = 1.10    # cost increase (+10%) for moving away from the goal
+HALF_DOUBLE_TIME_PENALTY = 0.05     # added cost of a hop that jumps half time <-> double time
 
 # --- Compatibility ranking (compatible_ranking.py) --------------------------
 

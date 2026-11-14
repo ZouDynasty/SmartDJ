@@ -11,6 +11,13 @@ def get_bpm_distance(bpm_a, bpm_b, max_tolerance = config.MAX_BPM_TOLERANCE):
     normalized_dist = best_delta / max_tolerance
     return normalized_dist
 
+def is_half_or_double_time(bpm_a, bpm_b):
+    """True when the tempos only match as half time or double time of each other."""
+    direct_dist = abs(bpm_a - bpm_b)
+    double_time_dist = abs(bpm_a - config.DOUBLE_TIME_RATIO * bpm_b)
+    half_time_dist = abs(bpm_a - config.HALF_TIME_RATIO * bpm_b)
+    return min(double_time_dist, half_time_dist) < direct_dist
+
 def get_key_distance(key_a, key_b):
     key_a = key_a.strip()
     key_b = key_b.strip()

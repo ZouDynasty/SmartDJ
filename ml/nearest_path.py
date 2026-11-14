@@ -4,7 +4,12 @@ from typing import Optional
 
 import config
 from candidate_retriever import CandidateRetriver
-from distance import get_genre_distance, get_key_distance, overall_distance
+from distance import (
+    get_genre_distance,
+    get_key_distance,
+    is_half_or_double_time,
+    overall_distance,
+)
 
 
 def _steer(current_gap: Optional[float], candidate_gap: Optional[float]) -> float:
@@ -115,6 +120,10 @@ class Nearest_Path:
 
                 distance = overall_distance(current_track, candidate_track)
                 distance *= self._goal_bias(current_track, candidate_track)
+                # Jumping between half time and double time is a bigger leap than
+                # a plain tempo match, so make it slightly less attractive.
+                if is_half_or_double_time(current_track["bpm"], candidate_track["bpm"]):
+                    distance += config.HALF_DOUBLE_TIME_PENALTY
 
                 candidate_cost = cost + distance
 
