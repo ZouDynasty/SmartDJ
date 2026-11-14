@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pause, Play, Volume2, X } from 'lucide-react'
 import { Artwork } from '@/components/Artwork'
+import { Visualizer } from '@/components/Visualizer'
 import { cn } from '@/lib/utils'
 import { trackAudioUrl } from '@/lib/api'
 import {
@@ -88,6 +89,8 @@ export function AudioPlayer() {
         ref={audioRef}
         src={trackAudioUrl(playingTrack.track_id, mediaToken)}
         preload="metadata"
+        // The visualizer reads the stream through Web Audio, which needs CORS access.
+        crossOrigin="anonymous"
         onLoadedMetadata={(event) => {
           const audio = event.currentTarget
           setDuration(audio.duration || 0)
@@ -150,6 +153,13 @@ export function AudioPlayer() {
           {energy === null ? '—' : energy.toFixed(2)}
         </span>
       </span>
+
+      <Visualizer
+        audioRef={audioRef}
+        isPlaying={isPlaying}
+        trackId={playingTrack.track_id}
+        className="hidden h-8 w-28 shrink-0 md:block"
+      />
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="shrink-0 font-mono text-xs text-ink-muted">
