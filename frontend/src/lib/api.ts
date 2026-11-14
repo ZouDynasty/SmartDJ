@@ -47,29 +47,15 @@ export function getTrack(trackId: number, signal?: AbortSignal): Promise<Track> 
   return apiFetch<Track>(`/tracks/${trackId}`, { signal })
 }
 
-/** One octave in either direction. Matches the API's `semitones` bounds. */
-export const MIN_PITCH_SEMITONES = -12
-export const MAX_PITCH_SEMITONES = 12
-
 /**
  * Streaming URL for a track's local audio file. The server resolves the path
  * from the library's `file_path`, so the browser never sees a filesystem path.
- *
- * A non-zero `semitones` asks the API to pitch-shift with Rubber Band first.
- * Tempo is unchanged. `0` is the original file. `mediaToken` authorizes the
- * request when the audio element does not send the session cookie.
+ * `mediaToken` authorizes the request when the audio element does not send
+ * the session cookie.
  */
-export function trackAudioUrl(
-  trackId: number,
-  mediaToken: string | null,
-  semitones = 0,
-): string {
-  const params = new URLSearchParams()
-  if (mediaToken) params.set('token', mediaToken)
-  if (semitones) params.set('semitones', String(semitones))
-  const query = params.toString()
+export function trackAudioUrl(trackId: number, mediaToken: string | null): string {
   const url = `${API_BASE}/tracks/${trackId}/audio`
-  return query ? `${url}?${query}` : url
+  return mediaToken ? `${url}?${new URLSearchParams({ token: mediaToken })}` : url
 }
 
 /** Album cover embedded in the track's file. 404s when there is none. */

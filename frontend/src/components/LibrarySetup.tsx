@@ -288,7 +288,7 @@ export function LibrarySetup() {
                 ? 'Continue in background'
                 : status.configured
                   ? 'Close'
-                  : 'Skip for now'}
+                  : 'Not now'}
             </button>
           )}
           <button

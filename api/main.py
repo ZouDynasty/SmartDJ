@@ -31,7 +31,6 @@ from api.library import (
     fetch_tracks,
     fetch_tracks_by_internal_ids,
 )
-from api.pitch import MAX_SEMITONES, MIN_SEMITONES, PitchShiftError, prepare_shifted_audio
 
 _ML_DIR = Path(__file__).resolve().parent.parent / "ml"
 if str(_ML_DIR) not in sys.path:
@@ -325,15 +324,10 @@ def _iter_file(path: Path, start: int, length: int) -> Iterator[bytes]:
 @app.get("/api/tracks/{track_id}/audio", dependencies=[Depends(auth.require_media_user)])
 def stream_track_audio(
     track_id: int,
-    semitones: int = Query(default=0, ge=MIN_SEMITONES, le=MAX_SEMITONES),
     range_header: str | None = Header(default=None, alias="Range"),
     connection: sqlite3.Connection = Depends(get_connection),
 ) -> Response:
-    """Stream the track's file from disk, honouring Range so seeking works.
-
-    ``semitones`` pitch-shifts with Rubber Band (tempo unchanged) and is cached.
-    ``0`` streams the original file.
-    """
+    """Stream the track's file from disk, honouring Range so seeking works."""
     path = fetch_audio_path(connection, track_id)
     if path is None:
         raise HTTPException(status_code=404, detail=f"Unknown track_id {track_id}")
@@ -341,12 +335,6 @@ def stream_track_audio(
         raise HTTPException(status_code=410, detail=f"Audio file missing: {path}")
 
     media_type = MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
-    if semitones != 0:
-        try:
-            path = prepare_shifted_audio(path, track_id, semitones)
-        except PitchShiftError as error:
-            raise HTTPException(status_code=503, detail=str(error)) from error
-        media_type = "audio/wav"
 
     file_size = path.stat().st_size
 

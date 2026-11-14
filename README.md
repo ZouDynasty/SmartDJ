@@ -2,6 +2,41 @@
 
 Local DJ set builder. It serves your Rekordbox library from SQLite, streams the audio files from disk, and lets you search, queue, and plot a set by BPM, energy, and key.
 
+## Features
+
+**Catalog** (bottom)
+
+- Searchable, sortable table of your library: title, artist, genre, BPM, key, energy, rating.
+- Genre tags filter the table and limit the shortest mixing path.
+- Drag column edges to resize (double-click to fit the longest name).
+- **Show compatible** ranks tracks that mix with the selected one (same or adjacent key, BPM within 10%) with a 0–1 score. Hover a score for the breakdown.
+- Double-click a row, click **+ Set**, or drag it to add it to the set.
+
+**Players** (middle)
+
+- Two slots that just hold tracks. Drop a track on either one.
+- Click a track to select it, then press **Backspace** (or click its **×**) to remove it. The other slot stays where it is.
+- Shows the BPM, key, and energy change from the left track to the right one.
+- **Shortest mixing path** adds the route between the two to the set (up to 10 hops), staying within any selected genres.
+
+**Set queue** (right)
+
+- Drag to reorder, **×** to remove, **Clear** to empty.
+- Name and **Save** a set (same name overwrites). **Saved** loads or deletes sets, stored in your Supabase account.
+
+**Set trajectory** (top)
+
+- Graphs BPM, energy, and key across the set. Switch views, zoom 1×–8×, and hover to highlight the matching queue card.
+
+**Player** (bottom bar)
+
+- Streams the original file with seek and volume.
+
+**Account**
+
+- Google sign-in. The **Account** menu has Light/Dark, **Library setup**, and **Log out**.
+- Panel sizes, column widths, and theme are remembered.
+
 ## Run
 
 ```bash
@@ -9,14 +44,6 @@ Local DJ set builder. It serves your Rekordbox library from SQLite, streams the 
 ```
 
 That starts both halves — the FastAPI library server on port 8000 and the Vite frontend on port 5173 — and leaves them running in the one terminal. Ctrl-C stops both. Open [http://localhost:5173/](http://localhost:5173/).
-
-The player's pitch buttons shift the current track by up to 12 semitones (one octave) without changing its tempo. That needs the Rubber Band CLI as well as `pyrubberband` from `requirements.txt`:
-
-```bash
-brew install rubberband
-```
-
-Shifted copies are cached under `data/pitch_cache/`.
 
 Before starting, the script checks that `.venv` and `frontend/node_modules` exist and that both ports are free, so a leftover server fails fast with a clear message instead of half-starting. It also exits if either server dies, rather than leaving a loading frontend in front of a dead API.
 

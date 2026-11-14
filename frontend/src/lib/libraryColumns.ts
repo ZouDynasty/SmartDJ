@@ -34,13 +34,17 @@ export const MIN_COLUMN_WIDTHS: LibraryColumnWidths = {
   compatibility: 112,
 }
 
-export const MAX_COLUMN_WIDTH = 900
+export const MAX_COLUMN_WIDTH = 1200
 
 const PLAY_COLUMN_WIDTH = 32
-const ADD_COLUMN_WIDTH = 84
-/** Tailwind `gap-4` between grid columns and `px-3` on each row. */
-const COLUMN_GAP = 16
-const ROW_PADDING_X = 12
+const ADD_COLUMN_WIDTH = 56
+/**
+ * Gap between grid columns and padding on each row, in px. They are applied as
+ * inline styles instead of `gap-4` / `px-3`: those scale with the root font
+ * size, which would drift away from the divider offsets computed here.
+ */
+export const COLUMN_GAP = 16
+export const ROW_PADDING_X = 12
 
 /** Always-visible columns, in display order. */
 export const BASE_COLUMNS: LibraryColumn[] = [
@@ -122,6 +126,6 @@ export function columnMinTableWidth(
     sized +
     ADD_COLUMN_WIDTH +
     (columnCount - 1) * COLUMN_GAP +
-    ROW_PADDING_X * 2
+    ROW_PADDING_X
   )
 }

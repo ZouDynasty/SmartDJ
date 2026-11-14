@@ -15,7 +15,17 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { FolderOpen, ListMusic, Pause, Play, Save, Trash2, X } from 'lucide-react'
+import {
+  ChevronsLeft,
+  ChevronsRight,
+  FolderOpen,
+  ListMusic,
+  Pause,
+  Play,
+  Save,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buildSetPoints, formatDuration } from '@/lib/setMath'
 import type { SetPoint } from '@/lib/setMath'
@@ -160,7 +170,15 @@ function SetCard({
   )
 }
 
-export function SetBuilder({ width }: { width: number }) {
+export function SetBuilder({
+  width,
+  collapsed,
+  onToggle,
+}: {
+  width: number
+  collapsed: boolean
+  onToggle: () => void
+}) {
   const activeQueue = useSetStore((state) => state.activeQueue)
   const savedSets = useSetStore((state) => state.savedSets)
   const savedSetsError = useSetStore((state) => state.savedSetsError)
@@ -241,6 +259,29 @@ export function SetBuilder({ width }: { width: number }) {
 
   const canSave = activeQueue.length > 0 && setName.trim().length > 0
 
+  if (collapsed) {
+    return (
+      <section className="flex w-10 shrink-0 flex-col items-center gap-3 bg-theme py-2.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={false}
+          title="Expand set queue"
+          className="rounded p-1 text-ink-muted transition-colors hover:text-ink"
+        >
+          <ChevronsLeft className="size-4" />
+        </button>
+        <ListMusic className="size-4 text-accent-ink" />
+        <span className="font-mono text-xs text-ink-muted">
+          {activeQueue.length}
+        </span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted [writing-mode:vertical-rl]">
+          Set Queue
+        </span>
+      </section>
+    )
+  }
+
   return (
     <section
       className="flex min-w-0 shrink-0 flex-col bg-theme"
@@ -248,6 +289,15 @@ export function SetBuilder({ width }: { width: number }) {
     >
       <header className="flex shrink-0 flex-col gap-2 border-b border-theme-line bg-theme-raised px-3 py-2.5">
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded
+            title="Collapse set queue"
+            className="-ml-1 shrink-0 rounded p-1 text-ink-muted transition-colors hover:text-ink"
+          >
+            <ChevronsRight className="size-3.5" />
+          </button>
           <ListMusic className="size-4 shrink-0 text-accent-ink" />
           <h2 className="min-w-0 truncate text-xs font-semibold uppercase tracking-wider text-ink">
             {loadedSet?.name ?? 'Active Set Queue'}
@@ -417,8 +467,8 @@ export function SetBuilder({ width }: { width: number }) {
       {points.length === 0 ? (
         <div className="m-3 rounded-lg border border-dashed border-theme-line bg-theme-raised px-4 py-8 text-center">
           <p className="text-sm text-ink-muted">
-            Queue is empty — drop tracks on Now and Next, then find the shortest
-            mixing path between them.
+            Queue is empty. Drop tracks in the two players, then find the shortest
+            mixing path.
           </p>
         </div>
       ) : (

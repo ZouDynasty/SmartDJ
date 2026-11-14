@@ -47,6 +47,29 @@ function App() {
   const [graphHeight, setGraphHeight] = useState(
     () => loadPanelLayout().graphHeight,
   )
+  const [graphCollapsed, setGraphCollapsed] = useState(false)
+  const [queueCollapsed, setQueueCollapsed] = useState(false)
+  // Space toggles the trajectory panel so the library grows upward and back.
+  // Ignored while typing or on a focused control, where Space already acts.
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat) return
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest('input, textarea, select, button, a, [role]'))
+      ) {
+        return
+      }
+      event.preventDefault()
+      setGraphCollapsed((value) => !value)
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [])
+
   const sidebarWidthRef = useRef(sidebarWidth)
   const graphHeightRef = useRef(graphHeight)
   sidebarWidthRef.current = sidebarWidth
@@ -187,7 +210,14 @@ function App() {
           ref={columnRef}
           className="flex min-h-0 min-w-0 flex-1 flex-col"
         >
-          <SetGraph height={graphHeight} />
+          <SetGraph
+            height={graphHeight}
+            collapsed={graphCollapsed}
+            onToggle={() => setGraphCollapsed((value) => !value)}
+          />
+          {graphCollapsed ? (
+            <div className="h-px shrink-0 bg-seam" />
+          ) : (
           <ResizeHandle
             axis="y"
             label="Resize set trajectory"
@@ -204,7 +234,11 @@ function App() {
             }}
             onDragEnd={persistSizes}
           />
+          )}
           <NowNext />
+          {graphCollapsed ? (
+            <div className="h-px shrink-0 bg-seam" />
+          ) : (
           <ResizeHandle
             axis="y"
             label="Resize DJ catalog"
@@ -221,8 +255,12 @@ function App() {
             }}
             onDragEnd={persistSizes}
           />
+          )}
           <TrackLibrary />
         </div>
+        {queueCollapsed ? (
+          <div className="w-px shrink-0 bg-seam" />
+        ) : (
         <ResizeHandle
           axis="x"
           invert
@@ -235,7 +273,12 @@ function App() {
           }}
           onDragEnd={persistSizes}
         />
-        <SetBuilder width={sidebarWidth} />
+        )}
+        <SetBuilder
+          width={sidebarWidth}
+          collapsed={queueCollapsed}
+          onToggle={() => setQueueCollapsed((value) => !value)}
+        />
       </div>
 
       <AudioPlayer />

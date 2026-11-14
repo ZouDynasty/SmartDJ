@@ -17,6 +17,8 @@ import { endTrackDrag, setTrackDragData } from '@/lib/dragTrack'
 import {
   BASE_COLUMNS,
   DEFAULT_COLUMN_WIDTHS,
+  COLUMN_GAP,
+  ROW_PADDING_X,
   clampColumnWidth,
   columnDividerOffsets,
   columnGridTemplate,
@@ -48,7 +50,7 @@ import type {
   Track,
 } from '@/types'
 
-const ROW_HEIGHT = 44
+const ROW_HEIGHT = 32
 const MAX_GENRE_TAGS = 16
 
 type CompatibilityScores = Map<number, CompatibilityScore>
@@ -56,6 +58,19 @@ type CompatibilityScores = Map<number, CompatibilityScore>
 interface HeaderColumn {
   field: LibraryColumn & SortField
   label: string
+}
+
+/** Columns whose values sit against the right edge of their cell. */
+const RIGHT_ALIGNED = new Set<LibraryColumn>(['bpm', 'key', 'energy', 'compatibility'])
+
+/** Space beside the text in a cell: the title's duration, or nothing. */
+const FIT_EXTRA: Partial<Record<LibraryColumn, number>> = { title: 56 }
+
+/** Canvas font matching each text column, so widths fit what is drawn. */
+const FIT_FONT_SIZE: Partial<Record<LibraryColumn, number>> = {
+  title: 14,
+  artist: 14,
+  genre: 12,
 }
 
 /** Only shown while "Show compatible" is on. */
@@ -142,12 +157,14 @@ function SortHeading({
   active,
   direction,
   onSort,
+  alignRight = false,
 }: {
   field: SortField
   label: string
   active: boolean
   direction: SortDirection
   onSort: (field: SortField) => void
+  alignRight?: boolean
 }) {
   return (
     <button
@@ -159,7 +176,9 @@ function SortHeading({
           : `Sort by ${label}`
       }
       className={cn(
-        'flex items-center gap-0.5 uppercase tracking-wider transition-colors',
+        // Fills the whole header cell, so the full box is the click target.
+        '-my-1.5 flex w-full items-center gap-0.5 py-1.5 uppercase tracking-wider transition-colors',
+        alignRight && 'justify-end',
         active ? 'text-ink' : 'hover:text-ink',
       )}
     >
@@ -181,24 +200,27 @@ function ColumnResizer({
   width,
   onResize,
   onResizeEnd,
+  onAutoFit,
+  hideLine = false,
 }: {
   column: LibraryColumn
   label: string
   width: number
   onResize: (column: LibraryColumn, width: number) => void
   onResizeEnd: () => void
+  onAutoFit: (column: LibraryColumn) => void
+  hideLine?: boolean
 }) {
   return (
     <span
       role="separator"
       aria-orientation="vertical"
       aria-label={`Resize ${label} column`}
-      title={`Drag to resize ${label} · double-click to reset`}
+      title={`Drag to resize ${label} · double-click to fit`}
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => {
         event.stopPropagation()
-        onResize(column, DEFAULT_COLUMN_WIDTHS[column])
-        onResizeEnd()
+        onAutoFit(column)
       }}
       onPointerDown={(event) => {
         if (event.button !== 0) return
@@ -226,7 +248,12 @@ function ColumnResizer({
       }}
       className="group absolute -inset-y-2 -right-[13px] z-10 flex w-2.5 cursor-col-resize touch-none select-none justify-center"
     >
-      <span className="h-full w-px bg-line transition-colors group-hover:w-0.5 group-hover:bg-accent group-active:w-0.5 group-active:bg-accent" />
+      <span
+        className={cn(
+          'h-full w-px transition-colors group-hover:w-0.5 group-hover:bg-accent group-active:w-0.5 group-active:bg-accent',
+          hideLine ? 'bg-transparent' : 'bg-line',
+        )}
+      />
     </span>
   )
 }
@@ -331,6 +358,10 @@ export function TrackLibrary() {
   const gridStyle = useMemo(
     () => ({
       gridTemplateColumns: columnGridTemplate(columnWidths, visibleColumns),
+      columnGap: COLUMN_GAP,
+      paddingLeft: ROW_PADDING_X,
+      // The pinned Add column runs flush to the right edge so it can centre its button.
+      paddingRight: 0,
       minWidth: columnMinTableWidth(columnWidths, visibleColumns),
     }),
     [columnWidths, visibleColumns],
@@ -343,25 +374,47 @@ export function TrackLibrary() {
   const handleColumnResize = useCallback(
     (column: LibraryColumn, width: number) => {
       const current = columnWidthsRef.current
-      let clamped = clampColumnWidth(column, width)
-      const viewportWidth = scrollRef.current?.clientWidth
-      if (viewportWidth !== undefined && clamped > current[column]) {
-        // Only grow into free space so the Add column stays on screen.
-        const freeSpace =
-          viewportWidth - columnMinTableWidth(current, visibleColumns)
-        clamped = Math.min(clamped, current[column] + Math.max(freeSpace, 0))
-      }
+      const clamped = clampColumnWidth(column, width)
       if (current[column] === clamped) return
       const next = { ...current, [column]: clamped }
       columnWidthsRef.current = next
       setColumnWidths(next)
     },
-    [visibleColumns],
+    [],
   )
 
   const handleColumnResizeEnd = useCallback(() => {
     persistColumnWidths(columnWidthsRef.current)
   }, [])
+
+  /** Fit a text column to its longest value; other columns return to their default. */
+  const handleColumnAutoFit = useCallback(
+    (column: LibraryColumn) => {
+      const fontSize = FIT_FONT_SIZE[column]
+      let width = DEFAULT_COLUMN_WIDTHS[column]
+      if (fontSize !== undefined) {
+        const context = document.createElement('canvas').getContext('2d')
+        if (context) {
+          const family = getComputedStyle(document.body).fontFamily
+          context.font = `${fontSize}px ${family}`
+          let longest = 0
+          for (const track of catalog) {
+            const text =
+              column === 'title'
+                ? trackTitle(track)
+                : column === 'artist'
+                  ? trackArtist(track)
+                  : (trackGenre(track) ?? '')
+            longest = Math.max(longest, context.measureText(text).width)
+          }
+          width = Math.ceil(longest) + (FIT_EXTRA[column] ?? 0) + 8
+        }
+      }
+      handleColumnResize(column, width)
+      handleColumnResizeEnd()
+    },
+    [catalog, handleColumnResize, handleColumnResizeEnd],
+  )
 
   /** Most common genres first so the tag row stays useful on big libraries. */
   const genreOptions = useMemo(() => {
@@ -532,21 +585,28 @@ export function TrackLibrary() {
       <div className="mx-4 mb-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-panel">
         <div
           ref={headerScrollRef}
-          className="shrink-0 overflow-hidden border-b border-line bg-raised"
+          className="shrink-0 overflow-hidden border-b border-line bg-[var(--color-sticky)] [background-image:linear-gradient(var(--color-raised),var(--color-raised))] [scrollbar-gutter:stable]"
         >
           <div
-            className="grid items-center gap-4 px-3 py-2 text-xs font-medium uppercase tracking-wider text-ink-muted"
+            className="grid items-center gap-4 px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-ink-muted"
             style={gridStyle}
           >
             <span />
-            {headerColumns.map(({ field, label }) => (
-              <div key={field} className="relative flex min-w-0 items-center">
+            {headerColumns.map(({ field, label }, columnIndex) => (
+              <div
+                key={field}
+                className={cn(
+                  'relative flex min-w-0 items-center',
+                  RIGHT_ALIGNED.has(field) && 'justify-end',
+                )}
+              >
                 <SortHeading
                   field={field}
                   label={label}
                   active={activeSortField === field}
                   direction={sortDirection}
                   onSort={handleSort}
+                  alignRight={RIGHT_ALIGNED.has(field)}
                 />
                 <ColumnResizer
                   column={field}
@@ -554,11 +614,15 @@ export function TrackLibrary() {
                   width={columnWidths[field]}
                   onResize={handleColumnResize}
                   onResizeEnd={handleColumnResizeEnd}
+                  onAutoFit={handleColumnAutoFit}
+                  hideLine={columnIndex === headerColumns.length - 1}
                 />
               </div>
             ))}
             <span />
-            <span className="text-right">Add</span>
+            <span className="sticky right-0 -my-1.5 self-stretch border-l border-line bg-[var(--color-sticky)] py-1.5 text-center [background-image:linear-gradient(var(--color-raised),var(--color-raised))]">
+              Add
+            </span>
           </div>
         </div>
 
@@ -568,7 +632,7 @@ export function TrackLibrary() {
             const header = headerScrollRef.current
             if (header) header.scrollLeft = event.currentTarget.scrollLeft
           }}
-          className="min-h-0 flex-1 overflow-auto"
+          className="min-h-0 flex-1 overflow-auto bg-[var(--color-sticky)] [scrollbar-gutter:stable]"
         >
           {catalogStatus === 'idle' && (
             <p className="px-3 py-6 text-sm text-ink-muted">
@@ -639,17 +703,23 @@ export function TrackLibrary() {
                     height: virtualRow.size,
                     transform: `translateY(${virtualRow.start}px)`,
                     gridTemplateColumns: gridStyle.gridTemplateColumns,
+                    columnGap: gridStyle.columnGap,
+                    paddingLeft: gridStyle.paddingLeft,
+                    paddingRight: gridStyle.paddingRight,
                   }}
                   className={cn(
-                    'grid cursor-grab items-center gap-4 border-b border-line/50 px-3 active:cursor-grabbing',
+                    'group/row grid cursor-grab items-center gap-4 border-b border-line/50 px-3 active:cursor-grabbing',
                     draggingTrackId === track.track_id
                       ? 'border border-dashed border-accent bg-transparent opacity-40'
                       : isSelected
                         ? 'bg-theme'
-                        : 'odd:bg-raised/70 hover:bg-raised',
+                        : cn(
+                            virtualRow.index % 2 === 1 && 'bg-raised/70',
+                            'hover:bg-raised',
+                          ),
                   )}
                 >
-                  {dividerOffsets.map((left) => (
+                  {dividerOffsets.slice(0, -1).map((left) => (
                     <span
                       key={left}
                       aria-hidden
@@ -726,7 +796,21 @@ export function TrackLibrary() {
                     </span>
                   )}
                   <span />
-                  <span className="flex justify-end">
+                  <span
+                    className={cn(
+                      // Same tint stack as the row, over the same opaque base.
+                      'sticky right-0 flex h-full items-center justify-center border-l border-line bg-[var(--color-sticky)]',
+                      '[background-image:linear-gradient(var(--tint,transparent),var(--tint,transparent))]',
+                      draggingTrackId !== track.track_id &&
+                        (isSelected
+                          ? '[--tint:var(--color-theme)]'
+                          : cn(
+                              virtualRow.index % 2 === 1 &&
+                                '[--tint:color-mix(in_oklab,var(--color-raised)_70%,transparent)]',
+                              'group-hover/row:[--tint:var(--color-raised)]',
+                            )),
+                    )}
+                  >
                     <button
                       type="button"
                       aria-label={`Add ${trackTitle(track)} to set`}
@@ -737,13 +821,12 @@ export function TrackLibrary() {
                         handleAdd(track)
                       }}
                       className={cn(
-                        'flex items-center gap-1 rounded-md border border-line bg-raised px-2 py-1',
-                        'text-xs font-medium text-ink-muted transition-colors',
+                        'flex h-6 w-9 items-center justify-center rounded-md border border-line bg-raised',
+                        'text-ink-muted transition-colors',
                         'hover:border-accent hover:bg-theme hover:text-ink',
                       )}
                     >
-                      <Plus className="size-3" />
-                      Set
+                      <Plus className="size-3.5" />
                     </button>
                   </span>
                 </div>

@@ -72,7 +72,7 @@ export function getDraggedTrackId(dataTransfer: DataTransfer): number | null {
   return Number.isFinite(trackId) ? trackId : null
 }
 
-/** Drop-zone handlers for Now Playing / Up Next. */
+/** Drop-zone handlers for the two player slots. */
 export function useTrackDrop(onDropTrack: (track: Track) => void) {
   const [isOver, setIsOver] = useState(false)
   const depthRef = useRef(0)

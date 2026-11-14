@@ -2,10 +2,6 @@
 tinytag>=1.10.0
 mutagen>=1.47.0
 
-# Pitch shift in the player. Also needs the rubberband CLI:
-#   brew install rubberband
-pyrubberband>=0.4.0
-
 # Audio analysis (BPM, key, energy, Discogs-EffNet genre)
 numpy>=1.24.0
 scipy>=1.11.0

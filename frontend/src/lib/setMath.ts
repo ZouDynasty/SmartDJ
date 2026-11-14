@@ -118,54 +118,6 @@ export function isMixCompatible(from: Track, to: Track): boolean {
   return bpmCompatible(trackBpm(from), trackBpm(to))
 }
 
-/** The Now Playing / Up Next pair shown in the transport strip. */
-export interface NowNextPair {
-  current: Track | null
-  next: Track | null
-  /** Queue index of the current track, or -1 when it is not in the set. */
-  currentIndex: number
-  /** Queue index of the next track, or -1 when Up Next is empty. */
-  nextIndex: number
-  currentInstanceId: string | null
-  nextInstanceId: string | null
-}
-
-/**
- * Same pairing the Now / Next panel uses: a playing queue track plus the
- * song after it, or a catalog preview plus the head of the set.
- */
-export function resolveNowNext(
-  queue: SetItem[],
-  playingTrack: Track | null,
-): NowNextPair {
-  const queueIndex = playingTrack
-    ? queue.findIndex((item) => item.track.track_id === playingTrack.track_id)
-    : -1
-
-  if (queueIndex >= 0) {
-    const current = queue[queueIndex]
-    const following = queue[queueIndex + 1]
-    return {
-      current: current.track,
-      next: following?.track ?? null,
-      currentIndex: queueIndex,
-      nextIndex: following ? queueIndex + 1 : -1,
-      currentInstanceId: current.instance_id,
-      nextInstanceId: following?.instance_id ?? null,
-    }
-  }
-
-  const head = queue[0]
-  return {
-    current: playingTrack,
-    next: head?.track ?? null,
-    currentIndex: -1,
-    nextIndex: head ? 0 : -1,
-    currentInstanceId: null,
-    nextInstanceId: head?.instance_id ?? null,
-  }
-}
-
 export function trackTitle(track: Track): string {
   return track.title?.trim() || 'Untitled'
 }
@@ -183,56 +135,6 @@ export function trackBpm(track: Track): number | null {
 /** Camelot drives the graph; the raw Rekordbox key is the display fallback. */
 export function trackKey(track: Track): string | null {
   return track.camelot_key?.trim() || track.key?.trim() || null
-}
-
-/**
- * Camelot numbers walk the circle of fifths, so +1 number is not +1 semitone.
- * Major keys (B), indexed by pitch class with C = 0.
- */
-const MAJOR_CAMELOT_BY_PITCH = [8, 3, 10, 5, 12, 7, 2, 9, 4, 11, 6, 1]
-
-const SPELLED_PITCH = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-
-const FLAT_PITCH: Record<string, number> = {
-  Db: 1,
-  Eb: 3,
-  Gb: 6,
-  Ab: 8,
-  Bb: 10,
-}
-
-function mod(value: number, modulo: number): number {
-  return ((value % modulo) + modulo) % modulo
-}
-
-function transposeCamelot(key: string, semitones: number): string | null {
-  const parts = parseCamelot(key)
-  if (!parts) return null
-  const majorPitch = MAJOR_CAMELOT_BY_PITCH.indexOf(parts.number)
-  if (majorPitch < 0) return null
-  const pitch = parts.mode === 'B' ? majorPitch : mod(majorPitch - 3, 12)
-  const shifted = mod(pitch + semitones, 12)
-  const major = parts.mode === 'B' ? shifted : mod(shifted + 3, 12)
-  return `${MAJOR_CAMELOT_BY_PITCH[major]}${parts.mode}`
-}
-
-/** Rekordbox spelled keys such as `F minor` or `C# major`. */
-function transposeSpelledKey(key: string, semitones: number): string | null {
-  const match = /^([A-G](?:#|b)?)(\s+)(minor|major)$/i.exec(key.trim())
-  if (!match) return null
-  const note = match[1]
-  const pitch = FLAT_PITCH[note] ?? SPELLED_PITCH.indexOf(note)
-  if (pitch < 0) return null
-  const quality = match[3].toLowerCase()
-  return `${SPELLED_PITCH[mod(pitch + semitones, 12)]} ${quality}`
-}
-
-/** Move a Camelot or spelled key by `semitones`. Unknown labels are unchanged. */
-export function transposeKey(key: string | null, semitones: number): string | null {
-  if (!key) return null
-  const steps = Math.trunc(semitones)
-  if (!steps) return key
-  return transposeCamelot(key, steps) ?? transposeSpelledKey(key, steps) ?? key
 }
 
 export function trackGenre(track: Track): string | null {

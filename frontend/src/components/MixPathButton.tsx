@@ -2,12 +2,11 @@ import { useCallback, useMemo, useState } from 'react'
 import { Route } from 'lucide-react'
 import { getMixPath } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { resolveNowNext, trackTitle } from '@/lib/setMath'
+import { trackTitle } from '@/lib/setMath'
 import { useSetStore } from '@/store/useSetStore'
 
 export function MixPathButton({ compact = false }: { compact?: boolean }) {
-  const activeQueue = useSetStore((state) => state.activeQueue)
-  const playingTrack = useSetStore((state) => state.playingTrack)
+  const decks = useSetStore((state) => state.decks)
   const insertMixPath = useSetStore((state) => state.insertMixPath)
   const genreFilters = useSetStore((state) => state.genreFilters)
 
@@ -20,16 +19,12 @@ export function MixPathButton({ compact = false }: { compact?: boolean }) {
   >({ kind: 'idle' })
 
   const endpoints = useMemo(() => {
-    const pair = resolveNowNext(activeQueue, playingTrack)
-    if (
-      pair.current &&
-      pair.next &&
-      pair.current.track_id !== pair.next.track_id
-    ) {
-      return { start: pair.current, goal: pair.next }
+    const [start, goal] = decks
+    if (start && goal && start.track_id !== goal.track_id) {
+      return { start, goal }
     }
     return null
-  }, [activeQueue, playingTrack])
+  }, [decks])
 
   const handleClick = useCallback(() => {
     if (!endpoints) return
@@ -67,8 +62,8 @@ export function MixPathButton({ compact = false }: { compact?: boolean }) {
   const genreScope =
     genreFilters.length > 0 ? ` through ${genreFilters.join(', ')}` : ''
   const tooltip = endpoints
-    ? `Find the shortest mixable route from ${trackTitle(endpoints.start)} to ${trackTitle(endpoints.goal)}${genreScope}`
-    : 'Load a track in Now Playing and another in Up Next'
+    ? `Shortest mixable route from ${trackTitle(endpoints.start)} to ${trackTitle(endpoints.goal)}${genreScope}`
+    : 'Load a different track in each player'
 
   return (
     <div
@@ -97,19 +92,15 @@ export function MixPathButton({ compact = false }: { compact?: boolean }) {
         )}
       >
         <Route className={compact ? 'size-3.5' : 'size-4'} />
-        {status.kind === 'loading'
-          ? 'Finding path…'
-          : compact
-            ? 'Find shortest mixing path'
-            : 'Shortest mixing path'}
+        {status.kind === 'loading' ? 'Finding path…' : 'Shortest mixing path'}
       </button>
       {status.kind === 'idle' && !compact && (
         <p
           className="max-w-72 text-right text-[11px] text-ink-faint"
         >
           {genreFilters.length > 0
-            ? `Only mixing through ${genreFilters.join(', ')}`
-            : 'Tip: select genres in the library to mix only through those'}
+            ? `Through ${genreFilters.join(', ')} only`
+            : 'Select genres to limit the path'}
         </p>
       )}
       {status.kind === 'ready' && (

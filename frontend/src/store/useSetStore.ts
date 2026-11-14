@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { resolveNowNext } from '@/lib/setMath'
 import { deleteSavedSetRow, upsertSavedSets } from '@/lib/savedSets'
 import type {
   AuthStatus,
@@ -39,16 +38,6 @@ function queueFromSaved(trackIds: number[], catalog: Track[]): SetItem[] {
   })
 }
 
-function playingQueueIndex(state: {
-  activeQueue: SetItem[]
-  playingTrack: Track | null
-}): number {
-  if (!state.playingTrack) return -1
-  return state.activeQueue.findIndex(
-    (item) => item.track.track_id === state.playingTrack?.track_id,
-  )
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -73,6 +62,8 @@ interface SetStore {
   /** Library setup dialog, opened on first sign-in or from the account menu. */
   setupOpen: boolean
 
+  /** The two player slots. Each holds its own track; emptying one leaves the other put. */
+  decks: [Track | null, Track | null]
   /** Ordered live set. */
   activeQueue: SetItem[]
   /** Mirror of the user's Supabase `saved_sets` rows, newest first. */
@@ -111,13 +102,16 @@ interface SetStore {
   setSetupOpen: (open: boolean) => void
 
   setActiveQueue: (queue: SetItem[]) => void
-  /** Splice Dijkstra intermediates between the Now Playing and Up Next tracks. */
+  /** Put a track in one player slot, or empty it with `null`. */
+  setDeck: (index: 0 | 1, track: Track | null) => void
+  /**
+   * Drop a track on a player. If it replaces the track loaded in the transport,
+   * the new one takes over: from the start if that was playing, paused if not.
+   */
+  dropOnDeck: (index: 0 | 1, track: Track) => void
+  /** Add a Dijkstra route to the set: start and goal if missing, intermediates between. */
   insertMixPath: (pathTracks: Track[]) => void
   addTrackToSet: (track: Track) => void
-  /** Insert at the current play position and start playback. */
-  playNow: (track: Track) => void
-  /** Insert immediately after the current track (or at the front of the set). */
-  queueNext: (track: Track) => void
   removeSetItem: (instanceId: string) => void
   moveSetItem: (fromIndex: number, toIndex: number) => void
   clearSet: () => void
@@ -152,6 +146,7 @@ interface SetStore {
 
 export const useSetStore = create<SetStore>()((set) => ({
   auth: null,
+  decks: [null, null],
 
   catalog: [],
   catalogStatus: 'idle',
@@ -184,6 +179,7 @@ export const useSetStore = create<SetStore>()((set) => ({
       catalog: [],
       catalogStatus: 'idle',
       catalogError: null,
+      decks: [null, null],
       activeQueue: [],
       savedSets: [],
       savedSetsError: null,
@@ -215,32 +211,47 @@ export const useSetStore = create<SetStore>()((set) => ({
 
   setActiveQueue: (queue) => set({ activeQueue: queue }),
 
+  setDeck: (index, track) =>
+    set((state) => {
+      const decks: [Track | null, Track | null] = [...state.decks]
+      decks[index] = track
+      return { decks }
+    }),
+
+  dropOnDeck: (index, track) =>
+    set((state) => {
+      const previous = state.decks[index]
+      const decks: [Track | null, Track | null] = [...state.decks]
+      decks[index] = track
+      const replacesLoaded =
+        previous !== null &&
+        previous.track_id !== track.track_id &&
+        state.playingTrack?.track_id === previous.track_id
+      return replacesLoaded ? { decks, playingTrack: track } : { decks }
+    }),
+
   insertMixPath: (pathTracks) =>
     set((state) => {
       if (pathTracks.length < 2) return {}
-      const pair = resolveNowNext(state.activeQueue, state.playingTrack)
-      if (!pair.current || !pair.next) return {}
-
+      const start = pathTracks[0]
+      const goal = pathTracks[pathTracks.length - 1]
       const middles = pathTracks.slice(1, -1).map(createSetItem)
-      const queue = state.activeQueue
+      const queue = [...state.activeQueue]
+      const indexOf = (track: Track) =>
+        queue.findIndex((item) => item.track.track_id === track.track_id)
 
-      const nextQueue =
-        pair.currentIndex >= 0
-          ? [
-              ...queue.slice(0, pair.currentIndex + 1),
-              ...middles,
-              ...queue.slice(
-                pair.nextIndex >= 0 ? pair.nextIndex : pair.currentIndex + 1,
-              ),
-            ]
-          : [
-              createSetItem(pathTracks[0]),
-              ...middles,
-              ...queue.slice(pair.nextIndex >= 0 ? pair.nextIndex : 0),
-            ]
+      let startIndex = indexOf(start)
+      if (startIndex < 0) {
+        queue.push(createSetItem(start))
+        startIndex = queue.length - 1
+      }
+      queue.splice(startIndex + 1, 0, ...middles)
+      if (indexOf(goal) < 0) {
+        queue.splice(startIndex + 1 + middles.length, 0, createSetItem(goal))
+      }
 
       return {
-        activeQueue: nextQueue,
+        activeQueue: queue,
         loadedSetId: null,
         highlightedInstanceId: null,
         highlightSource: null,
@@ -251,28 +262,6 @@ export const useSetStore = create<SetStore>()((set) => ({
     set((state) => ({
       activeQueue: [...state.activeQueue, createSetItem(track)],
     })),
-
-  playNow: (track) =>
-    set((state) => {
-      const playingIndex = playingQueueIndex(state)
-      const insertAt = playingIndex >= 0 ? playingIndex : 0
-      const next = [...state.activeQueue]
-      next.splice(insertAt, 0, createSetItem(track))
-      return {
-        activeQueue: next,
-        playingTrack: track,
-        isPlaying: true,
-      }
-    }),
-
-  queueNext: (track) =>
-    set((state) => {
-      const playingIndex = playingQueueIndex(state)
-      const insertAt = playingIndex >= 0 ? playingIndex + 1 : 0
-      const next = [...state.activeQueue]
-      next.splice(insertAt, 0, createSetItem(track))
-      return { activeQueue: next }
-    }),
 
   removeSetItem: (instanceId) =>
     set((state) => ({

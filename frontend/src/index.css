@@ -16,10 +16,12 @@
  * light theme and `.dark` overrides them, so no component needs `dark:`.
  */
 @theme {
-  --font-sans: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --color-canvas: rgb(255 255 255 / 0.22);
   --color-panel: rgb(255 255 255 / 0.62);
+  /* Opaque stand-in for panel, for the Add column pinned over scrolling cells. */
+  --color-sticky: #f4f8fc;
   --color-raised: rgb(255 255 255 / 0.5);
   --color-float: #fbfcfe;
   --color-line: rgb(60 85 120 / 0.16);
@@ -62,6 +64,7 @@
     linear-gradient(135deg, #15171b 0%, #1f232a 55%, #241f2a 100%);
   --color-canvas: rgb(0 0 0 / 0.16);
   --color-panel: rgb(34 38 46 / 0.68);
+  --color-sticky: #262b33;
   --color-raised: rgb(48 53 63 / 0.58);
   --color-float: #262b33;
   --color-line: rgb(255 255 255 / 0.09);

@@ -9,7 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { DotItemDotProps, TooltipContentProps } from 'recharts'
-import { Activity, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
+import { Activity, ChevronDown, ChevronUp, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/theme'
 import {
@@ -154,7 +154,15 @@ function SetTooltip({ active, payload }: TooltipContentProps) {
   )
 }
 
-export function SetGraph({ height }: { height: number }) {
+export function SetGraph({
+  height,
+  collapsed,
+  onToggle,
+}: {
+  height: number
+  collapsed: boolean
+  onToggle: () => void
+}) {
   const activeQueue = useSetStore((state) => state.activeQueue)
   const zoom = useSetStore((state) => state.zoom)
   const zoomIn = useSetStore((state) => state.zoomIn)
@@ -222,9 +230,31 @@ export function SetGraph({ height }: { height: number }) {
   return (
     <section
       className="flex shrink-0 flex-col bg-canvas"
-      style={{ height }}
+      style={collapsed ? undefined : { height }}
     >
-      <header className="flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2.5">
+      <header
+        className={cn(
+          'flex flex-wrap items-center gap-3 bg-panel px-4 py-2.5',
+          !collapsed && 'border-b border-line',
+        )}
+      >
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          title={
+            collapsed
+              ? 'Expand set trajectory (Space)'
+              : 'Collapse set trajectory (Space)'
+          }
+          className="-ml-1 rounded p-1 text-ink-muted transition-colors hover:text-ink"
+        >
+          {collapsed ? (
+            <ChevronDown className="size-3.5" />
+          ) : (
+            <ChevronUp className="size-3.5" />
+          )}
+        </button>
         <div className="flex items-center gap-2 text-ink">
           <Activity className="size-4 text-accent-ink" />
           <h2 className="text-xs font-semibold uppercase tracking-wider">
@@ -236,6 +266,7 @@ export function SetGraph({ height }: { height: number }) {
           {activeQueue.length} tracks · {formatDuration(totalSec)}
         </span>
 
+        {!collapsed && (
         <div className="ml-auto flex items-center gap-1 rounded-md border border-line bg-raised p-0.5">
           {VIEW_OPTIONS.map((option) => (
             <button
@@ -245,8 +276,8 @@ export function SetGraph({ height }: { height: number }) {
               className={cn(
                 'rounded px-2.5 py-1 text-xs font-medium transition-colors',
                 metricView === option.value
-                  ? 'bg-theme text-ink'
-                  : 'text-ink-muted hover:text-ink',
+                  ? 'bg-accent text-on-accent'
+                  : 'text-ink-muted hover:bg-theme hover:text-ink',
               )}
             >
               {option.label}
@@ -254,6 +285,9 @@ export function SetGraph({ height }: { height: number }) {
           ))}
         </div>
 
+        )}
+
+        {!collapsed && (
         <div className="flex items-center gap-1 rounded-md border border-line bg-raised p-0.5">
           <button
             type="button"
@@ -285,8 +319,10 @@ export function SetGraph({ height }: { height: number }) {
             <RotateCcw className="size-3.5" />
           </button>
         </div>
+        )}
       </header>
 
+      {!collapsed && (
       <div className="relative min-h-0 flex-1 overflow-x-auto overflow-y-hidden px-2 pb-2">
         <div style={{ width: `${100 * zoom}%`, height: '100%', minHeight: 220 }}>
           <ResponsiveContainer width="100%" height="100%">
@@ -393,10 +429,11 @@ export function SetGraph({ height }: { height: number }) {
 
         {points.length === 0 && (
           <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-ink-muted">
-            Add tracks from the catalog to plot the set trajectory.
+            Add tracks to plot the set.
           </p>
         )}
       </div>
+      )}
     </section>
   )
 }
