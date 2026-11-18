@@ -186,6 +186,11 @@ export function SetBuilder({
   const savedSetsError = useSetStore((state) => state.savedSetsError)
   const playlistCount = useSetStore((state) => state.playlists.length)
   const loadedSetId = useSetStore((state) => state.loadedSetId)
+  const loadedPlaylistId = useSetStore((state) => state.loadedPlaylistId)
+  const queueMode = useSetStore((state) => state.queueMode)
+  const setQueueMode = useSetStore((state) => state.setQueueMode)
+  const playlists = useSetStore((state) => state.playlists)
+  const savePlaylist = useSetStore((state) => state.savePlaylist)
   const moveSetItem = useSetStore((state) => state.moveSetItem)
   const removeSetItem = useSetStore((state) => state.removeSetItem)
   const addTrackToSet = useSetStore((state) => state.addTrackToSet)
@@ -208,10 +213,15 @@ export function SetBuilder({
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
   const loadedSet = savedSets.find((entry) => entry.id === loadedSetId) ?? null
+  const loadedPlaylist =
+    playlists.find((entry) => entry.id === loadedPlaylistId) ?? null
+  const isPlaylist = queueMode === 'playlist'
+  const noun = isPlaylist ? 'playlist' : 'set'
+  const loadedName = isPlaylist ? loadedPlaylist?.name : loadedSet?.name
 
   useEffect(() => {
-    if (loadedSet) setSetName(loadedSet.name)
-  }, [loadedSet])
+    if (loadedName) setSetName(loadedName)
+  }, [loadedName])
   const points = useMemo(() => buildSetPoints(activeQueue), [activeQueue])
   const ids = useMemo(() => points.map((point) => point.instanceId), [points])
 
@@ -259,8 +269,15 @@ export function SetBuilder({
   )
 
   const handleSave = useCallback(() => {
-    saveSet(setName)
-  }, [saveSet, setName])
+    if (isPlaylist) {
+      savePlaylist(
+        setName,
+        activeQueue.map((item) => item.track.track_id),
+      )
+    } else {
+      saveSet(setName)
+    }
+  }, [activeQueue, isPlaylist, savePlaylist, saveSet, setName])
 
   const canSave = activeQueue.length > 0 && setName.trim().length > 0
 
@@ -296,7 +313,7 @@ export function SetBuilder({
           type="button"
           onClick={onToggle}
           aria-expanded={false}
-          title="Expand set queue"
+          title={`Expand ${noun} queue`}
           className="rounded p-1 text-ink-muted transition-colors hover:text-ink"
         >
           <ChevronsLeft className="size-4" />
@@ -306,7 +323,7 @@ export function SetBuilder({
           {activeQueue.length}
         </span>
         <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted [writing-mode:vertical-rl]">
-          Set Queue
+          {isPlaylist ? 'Playlist' : 'Set'} Queue
         </span>
       </section>
     )
@@ -327,15 +344,40 @@ export function SetBuilder({
             type="button"
             onClick={onToggle}
             aria-expanded
-            title="Collapse set queue"
+            title={`Collapse ${noun} queue`}
             className="-ml-1 shrink-0 rounded p-1 text-ink-muted transition-colors hover:text-ink"
           >
             <ChevronsRight className="size-3.5" />
           </button>
           <ListMusic className="size-4 shrink-0 text-accent-ink" />
-          <h2 className="min-w-0 truncate text-xs font-semibold uppercase tracking-wider text-ink">
-            {loadedSet?.name ?? 'Active Set Queue'}
-          </h2>
+          <h2 className="sr-only">Queue</h2>
+          <div
+            role="radiogroup"
+            aria-label="Build a set or a playlist"
+            className="flex min-w-0 items-center rounded-md border border-theme-line bg-theme p-0.5"
+          >
+            {(['set', 'playlist'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={queueMode === mode}
+                onClick={() => {
+                  setQueueMode(mode)
+                  setSavedTab(mode === 'set' ? 'sets' : 'playlists')
+                  setPendingDeleteId(null)
+                }}
+                className={cn(
+                  'rounded px-2 py-0.5 text-xs font-semibold uppercase tracking-wider transition-colors',
+                  queueMode === mode
+                    ? 'bg-accent text-on-accent'
+                    : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
           <span className="ml-auto font-mono text-xs text-ink-muted">
             {activeQueue.length}
           </span>
@@ -351,7 +393,7 @@ export function SetBuilder({
             type="text"
             value={setName}
             onChange={(event) => setSetName(event.target.value)}
-            placeholder="Name this set…"
+            placeholder={`Name this ${noun}…`}
             className={cn(
               'min-w-0 flex-1 rounded-md border border-theme-line bg-theme px-2 py-1',
               'text-xs text-ink placeholder:text-ink-faint',
@@ -379,6 +421,7 @@ export function SetBuilder({
           <button
             type="button"
             onClick={() => {
+              if (!showSaved) setSavedTab(isPlaylist ? 'playlists' : 'sets')
               setShowSaved((open) => !open)
               setPendingDeleteId(null)
             }}
@@ -390,8 +433,10 @@ export function SetBuilder({
           >
             <FolderOpen className="size-3" />
             Saved
-            {savedSets.length > 0 && (
-              <span className="font-mono text-ink-faint">{savedSets.length}</span>
+            {(isPlaylist ? playlists.length : savedSets.length) > 0 && (
+              <span className="font-mono text-ink-faint">
+                {isPlaylist ? playlists.length : savedSets.length}
+              </span>
             )}
           </button>
           <span className="font-mono text-xs text-ink-muted">
@@ -529,7 +574,7 @@ export function SetBuilder({
       {points.length === 0 ? (
         <div className="m-3 rounded-lg border border-dashed border-theme-line bg-theme-raised px-4 py-8 text-center">
           <p className="text-sm text-ink-muted">
-            Drag tracks here.
+            Drag tracks here to build a {noun}.
           </p>
         </div>
       ) : (

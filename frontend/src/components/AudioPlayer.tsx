@@ -48,13 +48,15 @@ function TransportIcon({
 function ShuffleButton() {
   const shuffleOn = useSetStore((state) => state.shuffleOn)
   const toggleShuffle = useSetStore((state) => state.toggleShuffle)
-  const poolEmpty = useSetStore((state) => state.shufflePool.length === 0)
+  const poolEmpty = useSetStore(
+    (state) => state.activeQueue.length === 0 && state.shufflePool.length === 0,
+  )
   return (
     <button
       type="button"
       aria-label="Shuffle"
       aria-pressed={shuffleOn}
-      title="Shuffle: keep playing random tracks from the filtered library"
+      title="Shuffle: keep playing random tracks from the open set or playlist, or the filtered library if none is open"
       disabled={poolEmpty}
       onClick={(event) => {
         toggleShuffle()

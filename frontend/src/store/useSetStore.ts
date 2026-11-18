@@ -47,6 +47,26 @@ function pickRandomTrack(pool: Track[], current: Track | null): Track | null {
   return choices[Math.floor(Math.random() * choices.length)]
 }
 
+/**
+ * What Skip and Shuffle move through: the open set or playlist when the queue
+ * has tracks, otherwise the library as currently filtered. A track queued
+ * twice counts once, so Skip cannot bounce between its two copies.
+ */
+function playbackPool(state: {
+  activeQueue: SetItem[]
+  shufflePool: Track[]
+}): Track[] {
+  if (state.activeQueue.length === 0) return state.shufflePool
+  const seen = new Set<number>()
+  const pool: Track[] = []
+  for (const { track } of state.activeQueue) {
+    if (seen.has(track.track_id)) continue
+    seen.add(track.track_id)
+    pool.push(track)
+  }
+  return pool
+}
+
 function createSetItem(track: Track): SetItem {
   return {
     instance_id: createInstanceId(track.track_id),
@@ -83,6 +103,9 @@ function clampZoom(zoom: number): number {
 /** Where a hover originated, so only graph hovers auto-scroll the queue. */
 export type HighlightSource = 'graph' | 'queue' | null
 
+/** What the queue panel is building, which decides how Save stores it. */
+export type QueueMode = 'set' | 'playlist'
+
 interface SetStore {
   /** Null until `/auth/me` answers. The library is only fetched once signed in. */
   auth: AuthStatus | null
@@ -110,6 +133,10 @@ interface SetStore {
   playlistsError: string | null
   /** Set last saved or loaded; null while the queue is an unnamed draft. */
   loadedSetId: string | null
+  /** Playlist last loaded or saved from the queue; null once a set replaces it. */
+  loadedPlaylistId: string | null
+  /** Whether the queue panel is building a set or a playlist. */
+  queueMode: QueueMode
   selectedTrack: Track | null
   /** Shared hover target for graph <-> queue cross-highlighting. */
   highlightedInstanceId: string | null
@@ -120,7 +147,7 @@ interface SetStore {
   isPlaying: boolean
   /** When on, a finished track is followed by a random one from `shufflePool`. */
   shuffleOn: boolean
-  /** What shuffle draws from: the library as currently filtered. */
+  /** The library as currently filtered: what Skip and Shuffle use while the queue is empty. */
   shufflePool: Track[]
   /** Tracks played before the current one, oldest first, for the Back button. */
   playHistory: Track[]
@@ -178,6 +205,9 @@ interface SetStore {
   addTracksToPlaylist: (id: string, trackIds: number[]) => void
   removeTrackFromPlaylist: (id: string, trackId: number) => void
   deletePlaylist: (id: string) => void
+  setQueueMode: (mode: QueueMode) => void
+  /** Store the queue as a playlist; the same name overwrites its tracks. */
+  savePlaylist: (name: string, trackIds: number[]) => void
   /** Replace the queue with the playlist, or add it after the current tracks. */
   loadPlaylistIntoQueue: (id: string, mode: 'replace' | 'append') => void
 
@@ -193,7 +223,7 @@ interface SetStore {
   toggleShuffle: () => void
   /** Called when a track finishes: continues with a random track or stops. */
   handleTrackEnded: () => void
-  /** Next track: random while shuffling, otherwise the next row of the filtered library. */
+  /** Next track in the open set or playlist, or the filtered library when the queue is empty; random while shuffling. */
   skipTrack: () => void
   /** Go back to the track played before this one. */
   playPrevious: () => void
@@ -228,6 +258,8 @@ export const useSetStore = create<SetStore>()((set, get) => ({
   playlists: [],
   playlistsError: null,
   loadedSetId: null,
+  loadedPlaylistId: null,
+  queueMode: 'set',
   selectedTrack: null,
   highlightedInstanceId: null,
   highlightSource: null,
@@ -259,6 +291,8 @@ export const useSetStore = create<SetStore>()((set, get) => ({
       playlists: [],
       playlistsError: null,
       loadedSetId: null,
+      loadedPlaylistId: null,
+      queueMode: 'set',
       selectedTrack: null,
       highlightedInstanceId: null,
       highlightSource: null,
@@ -361,6 +395,7 @@ export const useSetStore = create<SetStore>()((set, get) => ({
       return {
         activeQueue: queue,
         loadedSetId: null,
+        loadedPlaylistId: null,
         highlightedInstanceId: null,
         highlightSource: null,
       }
@@ -412,6 +447,7 @@ export const useSetStore = create<SetStore>()((set, get) => ({
     set({
       activeQueue: [],
       loadedSetId: null,
+      loadedPlaylistId: null,
       highlightedInstanceId: null,
       highlightSource: null,
     }),
@@ -442,7 +478,13 @@ export const useSetStore = create<SetStore>()((set, get) => ({
       upsertSavedSets([record]).catch((error: unknown) => {
         set({ savedSetsError: `Save failed: ${errorMessage(error)}` })
       })
-      return { savedSets, savedSetsError: null, loadedSetId: record.id }
+      return {
+        savedSets,
+        savedSetsError: null,
+        loadedSetId: record.id,
+        loadedPlaylistId: null,
+        queueMode: 'set',
+      }
     }),
 
   loadSavedSet: (id) =>
@@ -452,6 +494,8 @@ export const useSetStore = create<SetStore>()((set, get) => ({
       return {
         activeQueue: queueFromSaved(saved.track_ids, state.catalog),
         loadedSetId: id,
+        loadedPlaylistId: null,
+        queueMode: 'set',
         highlightedInstanceId: null,
         highlightSource: null,
       }
@@ -472,6 +516,39 @@ export const useSetStore = create<SetStore>()((set, get) => ({
 
   setPlaylists: (playlists) => set({ playlists, playlistsError: null }),
   setPlaylistsError: (message) => set({ playlistsError: message }),
+  setQueueMode: (mode) => set({ queueMode: mode }),
+
+  savePlaylist: (name, trackIds) => {
+    const trimmed = name.trim()
+    const ids = uniqueIds(trackIds)
+    if (!trimmed || ids.length === 0) return
+    const existing = get().playlists.find((entry) => sameName(entry.name, trimmed))
+    if (!existing) {
+      get().createPlaylist(trimmed, ids)
+    } else {
+      const record = {
+        ...existing,
+        track_ids: ids,
+        updated_at: new Date().toISOString(),
+      }
+      upsertPlaylist(record).catch((error: unknown) => {
+        set((current) => ({
+          playlists: current.playlists.map((entry) =>
+            entry.id === existing.id ? existing : entry,
+          ),
+          playlistsError: `Save failed: ${errorMessage(error)}`,
+        }))
+      })
+      set((state) => ({
+        playlists: state.playlists.map((entry) =>
+          entry.id === existing.id ? record : entry,
+        ),
+        playlistsError: null,
+      }))
+    }
+    const saved = get().playlists.find((entry) => sameName(entry.name, trimmed))
+    if (saved) set({ loadedPlaylistId: saved.id, queueMode: 'playlist' })
+  },
 
   createPlaylist: (name, trackIds = []) =>
     set((state) => {
@@ -597,6 +674,8 @@ export const useSetStore = create<SetStore>()((set, get) => ({
       return {
         playlists: state.playlists.filter((entry) => entry.id !== id),
         playlistsError: null,
+        loadedPlaylistId:
+          state.loadedPlaylistId === id ? null : state.loadedPlaylistId,
       }
     }),
 
@@ -614,6 +693,8 @@ export const useSetStore = create<SetStore>()((set, get) => ({
         activeQueue: items,
         // The queue is now a playlist's contents, not a loaded saved set.
         loadedSetId: null,
+        loadedPlaylistId: id,
+        queueMode: 'playlist',
         highlightedInstanceId: null,
         highlightSource: null,
       }
@@ -648,7 +729,7 @@ export const useSetStore = create<SetStore>()((set, get) => ({
       if (state.shuffleOn) return { shuffleOn: false }
       // Playing or paused already: let it finish, then shuffle takes over.
       if (state.playingTrack) return { shuffleOn: true }
-      const next = pickRandomTrack(state.shufflePool, null)
+      const next = pickRandomTrack(playbackPool(state), null)
       return next
         ? { shuffleOn: true, ...switchTo(state, next), isPlaying: true }
         : {}
@@ -657,7 +738,7 @@ export const useSetStore = create<SetStore>()((set, get) => ({
   handleTrackEnded: () =>
     set((state) => {
       if (!state.shuffleOn) return { isPlaying: false }
-      const next = pickRandomTrack(state.shufflePool, state.playingTrack)
+      const next = pickRandomTrack(playbackPool(state), state.playingTrack)
       return next
         ? { ...switchTo(state, next), isPlaying: true }
         : { isPlaying: false }
@@ -667,14 +748,15 @@ export const useSetStore = create<SetStore>()((set, get) => ({
     set((state) => {
       const current = state.playingTrack
       if (!current) return {}
+      const pool = playbackPool(state)
       let next: Track | null
       if (state.shuffleOn) {
-        next = pickRandomTrack(state.shufflePool, current)
+        next = pickRandomTrack(pool, current)
       } else {
-        const index = state.shufflePool.findIndex(
+        const index = pool.findIndex(
           (track) => track.track_id === current.track_id,
         )
-        next = state.shufflePool[index + 1] ?? null
+        next = pool[index + 1] ?? null
       }
       return next ? { ...switchTo(state, next), isPlaying: true } : {}
     }),
