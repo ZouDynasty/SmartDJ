@@ -26,6 +26,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { PlaylistsPanel } from '@/components/PlaylistsPanel'
 import { useTrackDrop } from '@/lib/dragTrack'
 import { cn } from '@/lib/utils'
 import { buildSetPoints, formatDuration } from '@/lib/setMath'
@@ -183,6 +184,7 @@ export function SetBuilder({
   const activeQueue = useSetStore((state) => state.activeQueue)
   const savedSets = useSetStore((state) => state.savedSets)
   const savedSetsError = useSetStore((state) => state.savedSetsError)
+  const playlistCount = useSetStore((state) => state.playlists.length)
   const loadedSetId = useSetStore((state) => state.loadedSetId)
   const moveSetItem = useSetStore((state) => state.moveSetItem)
   const removeSetItem = useSetStore((state) => state.removeSetItem)
@@ -202,6 +204,7 @@ export function SetBuilder({
 
   const [setName, setSetName] = useState('')
   const [showSaved, setShowSaved] = useState(false)
+  const [savedTab, setSavedTab] = useState<'sets' | 'playlists'>('sets')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
   const loadedSet = savedSets.find((entry) => entry.id === loadedSetId) ?? null
@@ -263,6 +266,13 @@ export function SetBuilder({
 
   /** Dropping a library track adds it where it lands: before the first card whose middle is below the cursor. */
   const { isOver, dropHandlers } = useTrackDrop((track, event) => {
+    // A drop on a playlist row belongs to that playlist, not the queue.
+    if (
+      event.target instanceof Element &&
+      event.target.closest('[data-playlist-drop]')
+    ) {
+      return
+    }
     const cards = listRef.current?.querySelectorAll<HTMLElement>('li[data-instance-id]')
     let index = activeQueue.length
     cards?.forEach((card, cardIndex) => {
@@ -405,6 +415,34 @@ export function SetBuilder({
           )}
         </div>
         {showSaved && (
+          <div role="tablist" className="flex items-center gap-1">
+            {(['sets', 'playlists'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={savedTab === tab}
+                onClick={() => {
+                  setSavedTab(tab)
+                  setPendingDeleteId(null)
+                }}
+                className={cn(
+                  'rounded-md border px-2 py-0.5 text-xs capitalize transition-colors',
+                  savedTab === tab
+                    ? 'border-accent bg-theme text-ink'
+                    : 'border-theme-line text-ink-muted hover:text-ink',
+                )}
+              >
+                {tab}
+                <span className="ml-1 font-mono text-ink-faint">
+                  {tab === 'sets' ? savedSets.length : playlistCount}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        {showSaved && savedTab === 'playlists' && <PlaylistsPanel />}
+        {showSaved && savedTab === 'sets' && (
           <ul className="max-h-40 overflow-y-auto rounded-md border border-theme-line bg-theme">
             {savedSets.length === 0 ? (
               <li className="px-2 py-2 text-xs text-ink-muted">

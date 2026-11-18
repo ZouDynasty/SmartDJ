@@ -84,6 +84,15 @@ export interface SavedSet {
   saved_at: string
 }
 
+/** Row of the Supabase `playlists` table: a named, de-duplicated track collection. */
+export interface UserPlaylist {
+  id: string
+  name: string
+  track_ids: number[]
+  created_at: string
+  updated_at: string
+}
+
 export interface Recommendation {
   track: Track
   score: number | null

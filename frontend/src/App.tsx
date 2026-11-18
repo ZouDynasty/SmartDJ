@@ -16,6 +16,7 @@ import {
   loadPanelLayout,
   persistPanelLayout,
 } from '@/lib/panelLayout'
+import { fetchPlaylists } from '@/lib/playlists'
 import { fetchSavedSets, importLegacySavedSets } from '@/lib/savedSets'
 import { formatDuration, totalSetDuration } from '@/lib/setMath'
 import { supabase } from '@/lib/supabase'
@@ -35,6 +36,8 @@ function App() {
   const clearLibrary = useSetStore((state) => state.clearLibrary)
   const setSavedSets = useSetStore((state) => state.setSavedSets)
   const setSavedSetsError = useSetStore((state) => state.setSavedSetsError)
+  const setPlaylists = useSetStore((state) => state.setPlaylists)
+  const setPlaylistsError = useSetStore((state) => state.setPlaylistsError)
   const signedInUserId = useSetStore((state) => state.auth?.user?.id ?? null)
   const libraryVersion = useSetStore((state) => state.libraryVersion)
   /** Undefined until Supabase reports the stored session (or its absence). */
@@ -119,6 +122,24 @@ function App() {
       cancelled = true
     }
   }, [signedInUserId, setSavedSets, setSavedSetsError])
+
+  useEffect(() => {
+    if (signedInUserId === null) return
+    let cancelled = false
+    fetchPlaylists()
+      .then((playlists) => {
+        if (!cancelled) setPlaylists(playlists)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setPlaylistsError(
+          error instanceof Error ? error.message : 'Failed to load playlists.',
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [signedInUserId, setPlaylists, setPlaylistsError])
 
   useEffect(() => {
     if (signedInUserId === null) return

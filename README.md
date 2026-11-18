@@ -23,6 +23,7 @@ Local DJ set builder. It serves your Rekordbox library from SQLite, streams the 
 
 - Drag tracks in from the library, where you drop them sets their position. Drag cards to reorder, **×** to remove, **Clear** to empty.
 - Name and **Save** a set (same name overwrites). **Saved** loads or deletes sets, stored in your Supabase account.
+- **Saved → Playlists** keeps named track collections (no order, no duplicates) in your Supabase account. Create one empty or **From queue**, drag library tracks onto a playlist to add them, expand it to remove tracks, rename it, and load it into the queue (replace, or add to the end).
 
 **Set trajectory** (top)
 
@@ -77,6 +78,7 @@ cd frontend && npm install
 Accounts and saved sets live in a Supabase project. The library and audio stay local: the browser signs in with Supabase, and the API verifies the Supabase access token on every request.
 
 1. Create a Supabase project. In the SQL Editor, create `public.saved_sets` (`id uuid`, `user_id uuid` referencing `auth.users`, `name text`, `track_ids integer[]`, `saved_at timestamptz`) with row-level security policies that allow each user to select, insert, update, and delete only rows where `auth.uid() = user_id`.
+   For playlists, also run `supabase/playlists.sql` in the SQL Editor. It creates `public.playlists` with the same row-level security.
 2. In the [Google Cloud console](https://console.cloud.google.com/apis/credentials), create an **OAuth client ID** of type **Web application**. Add `http://localhost:5173` under **Authorized JavaScript origins** and the callback URL shown in Supabase under **Authentication → Sign In / Providers → Google** under **Authorized redirect URIs**.
 3. In that Supabase Google provider, paste the client ID and secret and enable it. Under **Authentication → URL Configuration**, set the Site URL to `http://localhost:5173` and add `http://localhost:5173/**` to the redirect URLs.
 4. `cp .env.example .env` and set `SUPABASE_URL` and `MEDIA_TOKEN_SECRET`.

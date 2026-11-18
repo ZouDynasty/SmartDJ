@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { setTrackRating } from '@/lib/api'
+import { deletePlaylistRow, upsertPlaylist } from '@/lib/playlists'
 import { deleteSavedSetRow, upsertSavedSets } from '@/lib/savedSets'
 import type {
   AuthStatus,
@@ -9,6 +10,7 @@ import type {
   SortDirection,
   SortField,
   Track,
+  UserPlaylist,
 } from '@/types'
 
 export const MIN_ZOOM = 1
@@ -61,6 +63,15 @@ function queueFromSaved(trackIds: number[], catalog: Track[]): SetItem[] {
   })
 }
 
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase()
+}
+
+/** Track IDs in first-seen order, each once. */
+function uniqueIds(trackIds: number[]): number[] {
+  return [...new Set(trackIds)]
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -93,6 +104,10 @@ interface SetStore {
   savedSets: SavedSet[]
   /** Last failed Supabase read or write of saved sets. */
   savedSetsError: string | null
+  /** Mirror of the user's Supabase `playlists` rows, most recently changed first. */
+  playlists: UserPlaylist[]
+  /** Last failed Supabase read or write of playlists, or a rejected name. */
+  playlistsError: string | null
   /** Set last saved or loaded; null while the queue is an unnamed draft. */
   loadedSetId: string | null
   selectedTrack: Track | null
@@ -154,6 +169,18 @@ interface SetStore {
   loadSavedSet: (id: string) => void
   deleteSavedSet: (id: string) => void
 
+  setPlaylists: (playlists: UserPlaylist[]) => void
+  setPlaylistsError: (message: string | null) => void
+  /** New playlist, empty or seeded with `trackIds`. Names are unique, ignoring case. */
+  createPlaylist: (name: string, trackIds?: number[]) => void
+  renamePlaylist: (id: string, name: string) => void
+  /** Adds the tracks it does not already hold, at the end. */
+  addTracksToPlaylist: (id: string, trackIds: number[]) => void
+  removeTrackFromPlaylist: (id: string, trackId: number) => void
+  deletePlaylist: (id: string) => void
+  /** Replace the queue with the playlist, or add it after the current tracks. */
+  loadPlaylistIntoQueue: (id: string, mode: 'replace' | 'append') => void
+
   setSelectedTrack: (track: Track | null) => void
   setHighlight: (instanceId: string | null, source?: HighlightSource) => void
 
@@ -198,6 +225,8 @@ export const useSetStore = create<SetStore>()((set, get) => ({
   activeQueue: [],
   savedSets: [],
   savedSetsError: null,
+  playlists: [],
+  playlistsError: null,
   loadedSetId: null,
   selectedTrack: null,
   highlightedInstanceId: null,
@@ -227,6 +256,8 @@ export const useSetStore = create<SetStore>()((set, get) => ({
       activeQueue: [],
       savedSets: [],
       savedSetsError: null,
+      playlists: [],
+      playlistsError: null,
       loadedSetId: null,
       selectedTrack: null,
       highlightedInstanceId: null,
@@ -436,6 +467,155 @@ export const useSetStore = create<SetStore>()((set, get) => ({
         savedSets,
         savedSetsError: null,
         loadedSetId: state.loadedSetId === id ? null : state.loadedSetId,
+      }
+    }),
+
+  setPlaylists: (playlists) => set({ playlists, playlistsError: null }),
+  setPlaylistsError: (message) => set({ playlistsError: message }),
+
+  createPlaylist: (name, trackIds = []) =>
+    set((state) => {
+      const trimmed = name.trim()
+      if (!trimmed) return {}
+      if (state.playlists.some((entry) => sameName(entry.name, trimmed))) {
+        return { playlistsError: `A playlist named "${trimmed}" already exists` }
+      }
+      const now = new Date().toISOString()
+      const record: UserPlaylist = {
+        id: crypto.randomUUID(),
+        name: trimmed,
+        track_ids: uniqueIds(trackIds),
+        created_at: now,
+        updated_at: now,
+      }
+      upsertPlaylist(record).catch((error: unknown) => {
+        // The row never reached Supabase, so drop it rather than show a ghost.
+        set((current) => ({
+          playlists: current.playlists.filter((entry) => entry.id !== record.id),
+          playlistsError: `Create failed: ${errorMessage(error)}`,
+        }))
+      })
+      return { playlists: [record, ...state.playlists], playlistsError: null }
+    }),
+
+  renamePlaylist: (id, name) =>
+    set((state) => {
+      const trimmed = name.trim()
+      const existing = state.playlists.find((entry) => entry.id === id)
+      if (!existing || !trimmed || trimmed === existing.name) return {}
+      if (
+        state.playlists.some(
+          (entry) => entry.id !== id && sameName(entry.name, trimmed),
+        )
+      ) {
+        return { playlistsError: `A playlist named "${trimmed}" already exists` }
+      }
+      const record = {
+        ...existing,
+        name: trimmed,
+        updated_at: new Date().toISOString(),
+      }
+      upsertPlaylist(record).catch((error: unknown) => {
+        set((current) => ({
+          playlists: current.playlists.map((entry) =>
+            entry.id === id ? existing : entry,
+          ),
+          playlistsError: `Rename failed: ${errorMessage(error)}`,
+        }))
+      })
+      return {
+        playlists: state.playlists.map((entry) =>
+          entry.id === id ? record : entry,
+        ),
+        playlistsError: null,
+      }
+    }),
+
+  addTracksToPlaylist: (id, trackIds) =>
+    set((state) => {
+      const existing = state.playlists.find((entry) => entry.id === id)
+      if (!existing) return {}
+      const held = new Set(existing.track_ids)
+      const added = uniqueIds(trackIds).filter((trackId) => !held.has(trackId))
+      if (added.length === 0) return {}
+      const record = {
+        ...existing,
+        track_ids: [...existing.track_ids, ...added],
+        updated_at: new Date().toISOString(),
+      }
+      upsertPlaylist(record).catch((error: unknown) => {
+        set((current) => ({
+          playlists: current.playlists.map((entry) =>
+            entry.id === id ? existing : entry,
+          ),
+          playlistsError: `Add failed: ${errorMessage(error)}`,
+        }))
+      })
+      return {
+        playlists: state.playlists.map((entry) =>
+          entry.id === id ? record : entry,
+        ),
+        playlistsError: null,
+      }
+    }),
+
+  removeTrackFromPlaylist: (id, trackId) =>
+    set((state) => {
+      const existing = state.playlists.find((entry) => entry.id === id)
+      if (!existing || !existing.track_ids.includes(trackId)) return {}
+      const record = {
+        ...existing,
+        track_ids: existing.track_ids.filter((entry) => entry !== trackId),
+        updated_at: new Date().toISOString(),
+      }
+      upsertPlaylist(record).catch((error: unknown) => {
+        set((current) => ({
+          playlists: current.playlists.map((entry) =>
+            entry.id === id ? existing : entry,
+          ),
+          playlistsError: `Remove failed: ${errorMessage(error)}`,
+        }))
+      })
+      return {
+        playlists: state.playlists.map((entry) =>
+          entry.id === id ? record : entry,
+        ),
+        playlistsError: null,
+      }
+    }),
+
+  deletePlaylist: (id) =>
+    set((state) => {
+      const existing = state.playlists.find((entry) => entry.id === id)
+      if (!existing) return {}
+      deletePlaylistRow(id).catch((error: unknown) => {
+        set((current) => ({
+          playlists: [existing, ...current.playlists],
+          playlistsError: `Delete failed: ${errorMessage(error)}`,
+        }))
+      })
+      return {
+        playlists: state.playlists.filter((entry) => entry.id !== id),
+        playlistsError: null,
+      }
+    }),
+
+  loadPlaylistIntoQueue: (id, mode) =>
+    set((state) => {
+      const playlist = state.playlists.find((entry) => entry.id === id)
+      if (!playlist) return {}
+      const items = queueFromSaved(playlist.track_ids, state.catalog)
+      if (mode === 'append') {
+        return items.length === 0
+          ? {}
+          : { activeQueue: [...state.activeQueue, ...items] }
+      }
+      return {
+        activeQueue: items,
+        // The queue is now a playlist's contents, not a loaded saved set.
+        loadedSetId: null,
+        highlightedInstanceId: null,
+        highlightSource: null,
       }
     }),
 
