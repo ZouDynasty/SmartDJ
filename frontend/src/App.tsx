@@ -4,6 +4,7 @@ import { Logo } from '@/components/Logo'
 import { AccountButton } from '@/components/AccountButton'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { LibrarySetup } from '@/components/LibrarySetup'
+import { MixingPreferences } from '@/components/MixingPreferences'
 import { NowNext } from '@/components/NowNext'
 import { ResizeHandle } from '@/components/ResizeHandle'
 import { SetBuilder } from '@/components/SetBuilder'
@@ -305,6 +306,7 @@ function App() {
 
       <AudioPlayer />
       <LibrarySetup />
+      <MixingPreferences />
     </div>
   )
 }

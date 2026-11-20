@@ -48,6 +48,25 @@
   --color-lagoon-200: #b4cde4;
   --color-lagoon-700: #2f5f8f;
   --color-lagoon-800: #234a72;
+  /*
+   * Field colors: one hue per metadata field, used everywhere that field shows
+   * (library rows, set cards, deck cards, player, graph, genre tags).
+   *   BPM    -> blue    Energy -> pink    Genre -> teal    Key -> graphite
+   * `-field` is text / icon / bar fill, `-soft` a chip background, `-line` its
+   * border. Keep SetGraph's PALETTES in sync with the `-field` values.
+   */
+  --color-bpm-field: #3b78ad;
+  --color-bpm-soft: rgb(59 120 173 / 0.14);
+  --color-bpm-line: rgb(59 120 173 / 0.4);
+  --color-energy-field: #d03d7b;
+  --color-energy-soft: rgb(208 61 123 / 0.12);
+  --color-energy-line: rgb(208 61 123 / 0.38);
+  --color-genre-field: #1d7f76;
+  --color-genre-soft: rgb(29 127 118 / 0.13);
+  --color-genre-line: rgb(29 127 118 / 0.4);
+  --color-key-field: #5b6470;
+  --color-key-soft: rgb(91 100 112 / 0.14);
+  --color-key-line: rgb(91 100 112 / 0.35);
 }
 
 :root {
@@ -91,6 +110,18 @@
   --color-lagoon-200: #3d5a7a;
   --color-lagoon-700: #a9c6e3;
   --color-lagoon-800: #cfe0f1;
+  --color-bpm-field: #8fb8e0;
+  --color-bpm-soft: rgb(143 184 224 / 0.16);
+  --color-bpm-line: rgb(143 184 224 / 0.4);
+  --color-energy-field: #f7a8c9;
+  --color-energy-soft: rgb(247 168 201 / 0.15);
+  --color-energy-line: rgb(247 168 201 / 0.4);
+  --color-genre-field: #7fd6c6;
+  --color-genre-soft: rgb(127 214 198 / 0.14);
+  --color-genre-line: rgb(127 214 198 / 0.4);
+  --color-key-field: #9aa5b3;
+  --color-key-soft: rgb(154 165 179 / 0.14);
+  --color-key-line: rgb(154 165 179 / 0.35);
 }
 
 html,

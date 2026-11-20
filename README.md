@@ -9,7 +9,7 @@ Local DJ set builder. It serves your Rekordbox library from SQLite, streams the 
 - Searchable, sortable table of your library: title, artist, genre, BPM, key, energy, rating (click the stars to change it).
 - Genre tags filter the table and limit the shortest mixing path.
 - Drag column edges to resize (double-click to fit the longest name).
-- **Show compatible** ranks tracks that mix with the selected one (same or adjacent key, BPM within 10%) with a 0–1 score. Hover a score for the breakdown.
+- **Show compatible** ranks tracks that mix with the selected one (same or adjacent key, BPM within 10%) with a 0–1 score. Hover a score for the breakdown. How much BPM, genre, key and energy count is set in **Account & Settings → Mixing preferences** (presets or per-factor sliders); the choice is saved in `data/settings.json` and written to the weights in `ml/config.py`.
 - Double-click a row, click **+ Set**, or drag it to add it to the set.
 
 **Players** (middle)

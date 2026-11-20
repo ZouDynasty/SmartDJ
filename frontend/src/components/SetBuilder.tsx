@@ -42,13 +42,13 @@ interface SetCardProps {
   onPlay: (instanceId: string) => void
 }
 
-/** Minor (A) keys read blue, major (B) keys read grey — quick harmonic scan. */
+/** Keys are always graphite; minor (A) is bolder than major (B) for a quick harmonic scan. */
 function keyBadgeClass(keyLabel: string): string {
   if (keyLabel.endsWith('A')) {
-    return 'bg-lagoon-100 text-lagoon-800'
+    return 'bg-key-soft font-semibold text-key-field'
   }
   if (keyLabel.endsWith('B')) {
-    return 'bg-chip text-chip-ink'
+    return 'bg-key-soft text-key-field'
   }
   return 'bg-raised text-ink-muted'
 }
@@ -131,7 +131,7 @@ function SetCard({
 
       <div className="flex shrink-0 flex-col items-end gap-0.5 font-mono text-[11px] leading-tight">
         <span className="flex items-center gap-1">
-          <span className="text-lagoon-700">
+          <span className="text-bpm-field">
             {point.bpm === null ? '—' : point.bpm.toFixed(0)}
           </span>
           <span
@@ -144,7 +144,7 @@ function SetCard({
           </span>
         </span>
         <span className="flex items-center gap-1">
-          <span className="text-ink">
+          <span className="text-energy-field">
             {point.energyRaw === null ? '—' : point.energyRaw.toFixed(1)}
           </span>
           <span className="text-ink-faint">

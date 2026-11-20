@@ -3,6 +3,8 @@ import type {
   AuthStatus,
   CompatibilityRanking,
   LibrarySetupStatus,
+  MixingImportance,
+  MixingPreferences,
   MixPath,
   Playlist,
   Recommendation,
@@ -110,6 +112,21 @@ export function getMixPath(
   })
   for (const genre of genres) params.append('genres', genre)
   return apiFetch<MixPath>(`/mix-path?${params}`, { signal })
+}
+
+export function getMixingPreferences(signal?: AbortSignal): Promise<MixingPreferences> {
+  return apiFetch<MixingPreferences>('/mixing-preferences', { signal })
+}
+
+/** Saves the slider values; the API normalizes them and applies them to the ranking. */
+export function saveMixingPreferences(
+  importance: MixingImportance,
+): Promise<MixingPreferences> {
+  return apiFetch<MixingPreferences>('/mixing-preferences', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(importance),
+  })
 }
 
 export function getAuthStatus(signal?: AbortSignal): Promise<AuthStatus> {

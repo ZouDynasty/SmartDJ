@@ -28,14 +28,15 @@ const SERIES_LABELS = { bpm: 'BPM', energy: 'Energy', key: 'Key' } as const
 type SeriesKey = keyof typeof SERIES_LABELS
 
 /**
- * Mist Blue BPM, Pink energy, graphite-grey key. The light theme uses deeper
- * shades so the lines stay readable on frosted white panels.
+ * Field colors match the `--color-*-field` tokens in index.css (blue BPM, pink
+ * energy, graphite key) so a field reads the same here as in the lists. The
+ * light theme uses deeper shades so the lines stay readable on frosted panels.
  */
 const PALETTES = {
   light: {
     bpm: '#3b78ad',
     energy: '#d03d7b',
-    key: '#6b7480',
+    key: '#5b6470',
     grid: 'rgba(60, 85, 120, 0.16)',
     axis: 'rgba(60, 85, 120, 0.3)',
     tick: '#23262b',
@@ -102,7 +103,7 @@ const CHART_CHROME_PX = 110
 const MIN_KEY_SLOT_PX = 13
 
 /**
- * Camelot tick: minor (A) keys in the BPM blue, major (B) keys in grey. When
+ * Camelot tick: minor (A) keys bold in the key grey, major (B) keys in ink. When
  * the axis is too short for all 24 labels, B keys shrink to a small tick mark
  * between the A labels instead of a crowded label.
  */
@@ -119,7 +120,7 @@ function KeyTick({
   payload?: { value: number }
   fontSize: number
   showMajorLabels: boolean
-  palette: { bpm: string; tick: string }
+  palette: { key: string; tick: string }
 }) {
   if (x === undefined || y === undefined || payload === undefined) return null
   const label = camelotLabel(payload.value)
@@ -144,7 +145,7 @@ function KeyTick({
       textAnchor="start"
       fontSize={fontSize}
       fontWeight={isMinor ? 600 : 400}
-      fill={isMinor ? palette.bpm : palette.tick}
+      fill={isMinor ? palette.key : palette.tick}
       fillOpacity={isMinor ? 1 : 0.75}
     >
       {label}

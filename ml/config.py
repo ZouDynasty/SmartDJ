@@ -19,11 +19,30 @@ ENERGY_SCALE = 10.0                 # energy_score range (0-10)
 SAME_GENRE_SIMILARITY = 1.0         # similarity of identical genres
 UNKNOWN_GENRE_SIMILARITY = 0.5      # similarity when a genre is missing
 
+# --- Mixing preferences: how much each factor matters in a transition -------
+#
+# These four weights always sum to 1. They drive both the transition cost
+# (distance.overall_distance, used by the mix path) and the compatibility
+# ranking. The defaults below are the "balanced" preset; the DJ's Mixing
+# preferences setting overwrites them at runtime (see mixing_preferences.py).
+
+BPM_WEIGHT = 0.30                   # weight of tempo difference
+GENRE_WEIGHT = 0.25                 # weight of genre difference
+KEY_WEIGHT = 0.25                   # weight of key difference
+ENERGY_WEIGHT = 0.20                # weight of energy difference
+
+DEFAULT_MIXING_PRESET = "balanced"
+# Importance per factor, in percent; each preset sums to 100.
+MIXING_PRESETS = {
+    "balanced":  {"label": "Balanced",         "bpm": 30, "genre": 25, "key": 25, "energy": 20},
+    "harmonic":  {"label": "Harmonic Mixing",  "bpm": 20, "genre": 15, "key": 50, "energy": 15},
+    "beatmatch": {"label": "Beatmatching",     "bpm": 50, "genre": 20, "key": 15, "energy": 15},
+    "genre":     {"label": "Genre-Focused",    "bpm": 20, "genre": 50, "key": 15, "energy": 15},
+    "energy":    {"label": "Energy-Focused",   "bpm": 20, "genre": 15, "key": 15, "energy": 50},
+}
+
 # --- Transition cost (distance.overall_distance) ----------------------------
 
-BPM_WEIGHT = 0.4                    # weight of tempo difference
-ENERGY_WEIGHT = 0.2                 # weight of energy difference
-GENRE_WEIGHT = 0.4                  # weight of genre difference
 MISSING_ENERGY_COST = 0.5           # energy cost when energy is unknown
 
 # --- Shortest mixing path (nearest_path.py) ---------------------------------
@@ -37,10 +56,6 @@ HALF_DOUBLE_TIME_PENALTY = 0.05     # added cost of a hop that jumps half time <
 # --- Compatibility ranking (compatible_ranking.py) --------------------------
 
 RANK_CANDIDATE_LIMIT = -1           # candidates to rank (-1 = all compatible)
-RANK_BPM_WEIGHT = 0.2               # weight of tempo difference
-RANK_KEY_WEIGHT = 0.3               # weight of key difference
-RANK_ENERGY_WEIGHT = 0.2            # weight of energy difference
-RANK_GENRE_WEIGHT = 0.3             # weight of genre difference
 RANK_KEY_DISTANCE_SCALE = MAX_KEY_DISTANCE  # key distance that counts as fully different
 RANK_MISSING_ENERGY_DISTANCE = 0.5  # energy difference assumed when energy is unknown
 

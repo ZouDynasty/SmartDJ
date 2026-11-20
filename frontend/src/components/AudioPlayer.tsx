@@ -276,13 +276,13 @@ export function AudioPlayer() {
       </div>
 
       <span className="hidden shrink-0 items-center gap-1.5 font-mono text-xs md:flex">
-        <span className="rounded border border-lagoon-200 bg-lagoon-50 px-1.5 py-0.5 text-lagoon-700">
+        <span className="rounded border border-bpm-line bg-bpm-soft px-1.5 py-0.5 text-bpm-field">
           {bpm === null ? '—' : bpm.toFixed(1)}
         </span>
-        <span className="rounded border border-chip-line bg-chip px-1.5 py-0.5 text-chip-ink">
+        <span className="rounded border border-key-line bg-key-soft px-1.5 py-0.5 text-key-field">
           {keyLabel ?? '—'}
         </span>
-        <span className="rounded border border-chip-line bg-chip px-1.5 py-0.5 text-ink">
+        <span className="rounded border border-energy-line bg-energy-soft px-1.5 py-0.5 text-energy-field">
           {energy === null ? '—' : energy.toFixed(2)}
         </span>
       </span>

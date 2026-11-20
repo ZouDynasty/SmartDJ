@@ -5,6 +5,8 @@ import {
   LogIn,
   LogOut,
   Moon,
+  Settings,
+  SlidersHorizontal,
   Sun,
   UserRound,
 } from 'lucide-react'
@@ -61,6 +63,7 @@ function AccountMenu({
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const setSetupOpen = useSetStore((state) => state.setSetupOpen)
+  const setMixingOpen = useSetStore((state) => state.setMixingOpen)
   const theme = useTheme((state) => state.theme)
   const setTheme = useTheme((state) => state.setTheme)
 
@@ -89,8 +92,9 @@ function AccountMenu({
         onClick={() => setOpen((value) => !value)}
         className={buttonClass}
       >
+        <Settings className="size-3.5 text-accent-ink" />
         <Avatar user={user} size="size-4" />
-        Account
+        Account &amp; Settings
         <ChevronDown
           className={`size-3.5 text-ink-muted transition-transform ${open ? 'rotate-180' : ''}`}
         />
@@ -140,6 +144,18 @@ function AccountMenu({
               ))}
             </div>
           </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              setMixingOpen(true)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-ink hover:bg-theme"
+          >
+            <SlidersHorizontal className="size-3.5" />
+            Mixing preferences
+          </button>
           <button
             type="button"
             role="menuitem"

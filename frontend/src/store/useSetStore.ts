@@ -118,6 +118,10 @@ interface SetStore {
   libraryVersion: number
   /** Library setup dialog, opened on first sign-in or from the account menu. */
   setupOpen: boolean
+  /** Mixing preferences panel, opened from the settings menu. */
+  mixingOpen: boolean
+  /** Bumped when mixing preferences are saved, so compatibility scores are fetched again. */
+  mixingVersion: number
 
   /** The two player slots. Each holds its own track; emptying one leaves the other put. */
   decks: [Track | null, Track | null]
@@ -173,6 +177,8 @@ interface SetStore {
   /** Rate a track 0–5 stars; shown at once, saved in the background. */
   rateTrack: (trackId: number, stars: number) => void
   setSetupOpen: (open: boolean) => void
+  setMixingOpen: (open: boolean) => void
+  bumpMixingVersion: () => void
 
   setActiveQueue: (queue: SetItem[]) => void
   /** Put a track in one player slot, or empty it with `null`. */
@@ -251,6 +257,8 @@ export const useSetStore = create<SetStore>()((set, get) => ({
   catalogError: null,
   libraryVersion: 0,
   setupOpen: false,
+  mixingOpen: false,
+  mixingVersion: 0,
 
   activeQueue: [],
   savedSets: [],
@@ -342,6 +350,9 @@ export const useSetStore = create<SetStore>()((set, get) => ({
   },
 
   setSetupOpen: (open) => set({ setupOpen: open }),
+  setMixingOpen: (open) => set({ mixingOpen: open }),
+  bumpMixingVersion: () =>
+    set((state) => ({ mixingVersion: state.mixingVersion + 1 })),
 
   setActiveQueue: (queue) => set({ activeQueue: queue }),
 

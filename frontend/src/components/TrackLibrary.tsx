@@ -318,6 +318,7 @@ export function TrackLibrary() {
   const addTrackToSet = useSetStore((state) => state.addTrackToSet)
   const selectedTrack = useSetStore((state) => state.selectedTrack)
   const setSelectedTrack = useSetStore((state) => state.setSelectedTrack)
+  const mixingVersion = useSetStore((state) => state.mixingVersion)
   const playTrack = useSetStore((state) => state.playTrack)
   const rateTrack = useSetStore((state) => state.rateTrack)
   const setShufflePool = useSetStore((state) => state.setShufflePool)
@@ -368,7 +369,7 @@ export function TrackLibrary() {
         )
       })
     return () => controller.abort()
-  }, [rankedSeedId])
+  }, [rankedSeedId, mixingVersion])
 
   const scores =
     ranking !== null && ranking.seedId === rankedSeedId ? ranking.scores : null
@@ -556,15 +557,15 @@ export function TrackLibrary() {
                   className={cn(
                     'shrink-0 rounded-full border px-2.5 py-0.5 text-xs transition-colors',
                     isActive
-                      ? 'border-theme-line bg-theme text-ink'
-                      : 'border-line bg-raised text-ink-muted hover:text-ink',
+                      ? 'border-genre-line bg-genre-soft text-genre-field'
+                      : 'border-line bg-raised text-genre-field/80 hover:border-genre-line hover:text-genre-field',
                   )}
                 >
                   {genre}
                   <span
                     className={cn(
                       'ml-1.5 font-mono tabular-nums',
-                      isActive ? 'text-ink-muted' : 'text-ink-faint',
+                      isActive ? 'text-genre-field' : 'text-ink-faint',
                     )}
                   >
                     {count}
@@ -791,23 +792,23 @@ export function TrackLibrary() {
                   <span className="truncate text-sm text-ink-muted">
                     {trackArtist(track)}
                   </span>
-                  <span className="truncate text-xs text-ink-faint">
+                  <span className="truncate text-xs text-genre-field">
                     {trackGenre(track) ?? '—'}
                   </span>
-                  <span className="text-right font-mono text-xs text-lagoon-700">
+                  <span className="text-right font-mono text-xs text-bpm-field">
                     {bpm === null ? '—' : bpm.toFixed(1)}
                   </span>
-                  <span className="text-right font-mono text-xs text-ink-muted">
+                  <span className="text-right font-mono text-xs text-key-field">
                     {trackKey(track) ?? '—'}
                   </span>
                   <span className="flex min-w-0 items-center justify-end gap-1.5 overflow-hidden">
                     <span className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-canvas">
                       <span
-                        className="block h-full rounded-full bg-ink"
+                        className="block h-full rounded-full bg-energy-field"
                         style={{ width: `${(energy ?? 0) * 100}%` }}
                       />
                     </span>
-                    <span className="font-mono text-xs text-ink">
+                    <span className="font-mono text-xs text-energy-field">
                       {energy === null ? '—' : energy.toFixed(2)}
                     </span>
                   </span>

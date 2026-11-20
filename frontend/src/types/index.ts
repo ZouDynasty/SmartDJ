@@ -179,3 +179,24 @@ export interface CompatibilityRanking {
 }
 
 export type SortDirection = 'asc' | 'desc'
+
+/** The factors a DJ weighs when judging a transition. */
+export type MixingFactor = 'bpm' | 'genre' | 'key' | 'energy'
+
+/** Relative importance per factor, 0-100. Only the proportions matter. */
+export type MixingImportance = Record<MixingFactor, number>
+
+export interface MixingPreset {
+  id: string
+  label: string
+  importance: MixingImportance
+}
+
+export interface MixingPreferences {
+  importance: MixingImportance
+  /** `importance` normalized to sum to 1, as applied by the ranking. */
+  weights: MixingImportance
+  active_preset: string | null
+  default_preset: string
+  presets: MixingPreset[]
+}

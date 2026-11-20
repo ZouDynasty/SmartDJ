@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from api import auth, setup
+from api import auth, mixing, setup
 from api.artwork import extract_artwork
 from api.library import (
     DB_PATH,
@@ -76,6 +76,8 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(setup.router)
+app.include_router(mixing.router)
+mixing.apply_saved()
 
 #: Route-level dependencies run before parameter dependencies, so an
 #: unauthenticated request is rejected before the library database is opened.

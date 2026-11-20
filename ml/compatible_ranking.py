@@ -55,10 +55,10 @@ class compatibility_ranking():
         for candidate in candidates:
             distances = self._distances(current, candidate)
             weighted = (
-                config.RANK_BPM_WEIGHT * distances["bpm"]
-                + config.RANK_KEY_WEIGHT * distances["key"]
-                + config.RANK_ENERGY_WEIGHT * distances["energy"]
-                + config.RANK_GENRE_WEIGHT * distances["genre"]
+                config.BPM_WEIGHT * distances["bpm"]
+                + config.KEY_WEIGHT * distances["key"]
+                + config.ENERGY_WEIGHT * distances["energy"]
+                + config.GENRE_WEIGHT * distances["genre"]
             )
             ranked.append({
                 "id": candidate["id"],

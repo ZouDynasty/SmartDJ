@@ -43,12 +43,13 @@ function toSlot(track: Track): Slot {
   }
 }
 
+/** Keys are always graphite; minor (A) is bolder than major (B). */
 function keyBadgeClass(keyLabel: string | null): string {
   if (keyLabel?.endsWith('A')) {
-    return 'border-lagoon-200 bg-lagoon-50 text-lagoon-800'
+    return 'border-key-line bg-key-soft font-semibold text-key-field'
   }
   if (keyLabel?.endsWith('B')) {
-    return 'border-chip-line bg-chip text-chip-ink'
+    return 'border-key-line bg-key-soft text-key-field'
   }
   return 'border-line bg-raised text-ink-muted'
 }
@@ -145,7 +146,7 @@ function SlotCard({
             {slot.artist}
           </p>
           <div className="flex shrink-0 items-center gap-1.5 font-mono text-xs">
-            <span className="rounded border border-lagoon-200 bg-lagoon-50 px-1.5 py-0.5 font-medium text-lagoon-800">
+            <span className="rounded border border-bpm-line bg-bpm-soft px-1.5 py-0.5 font-medium text-bpm-field">
               {slot.bpm === null ? '—' : slot.bpm.toFixed(1)}
             </span>
             <span
@@ -156,7 +157,7 @@ function SlotCard({
             >
               {slot.keyLabel ?? '—'}
             </span>
-            <span className="rounded border border-chip-line bg-chip px-1.5 py-0.5 font-medium text-ink">
+            <span className="rounded border border-energy-line bg-energy-soft px-1.5 py-0.5 font-medium text-energy-field">
               {slot.energy === null ? '—' : slot.energy.toFixed(2)}
             </span>
             <span className="text-ink-muted">
@@ -216,7 +217,7 @@ function TransitionSummary({
     <div className="flex shrink-0 flex-col items-center gap-1 px-3">
       <ArrowRight className="size-4 text-ink-muted" />
       <div className="flex items-center gap-2 font-mono text-xs whitespace-nowrap">
-        <span className={bpmSafe ? 'text-ink-muted' : 'text-danger'}>
+        <span className={bpmSafe ? 'text-bpm-field' : 'text-danger'}>
           {bpmDelta === null
             ? 'BPM —'
             : `${bpmDelta >= 0 ? '+' : ''}${bpmDelta.toFixed(1)} BPM`}
@@ -227,14 +228,14 @@ function TransitionSummary({
             relation === null
               ? 'text-ink-muted'
               : relation.compatible
-                ? 'text-lagoon-700'
-                : 'text-ink'
+                ? 'font-semibold text-key-field'
+                : 'text-key-field'
           }
         >
           {relation?.label ?? 'Key —'}
         </span>
         <span className="text-ink-faint">|</span>
-        <span className="text-ink-muted">
+        <span className="text-energy-field">
           {energyDelta === null
             ? 'Energy —'
             : `${energyDelta >= 0 ? '+' : ''}${energyDelta.toFixed(1)} energy`}

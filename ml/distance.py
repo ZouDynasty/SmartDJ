@@ -69,8 +69,15 @@ def overall_distance(track_a, track_b):
         track_b.get("macro_genre"),
     )
 
+    key_cost = min(
+        get_key_distance(track_a["camelot_key"], track_b["camelot_key"])
+        / config.RANK_KEY_DISTANCE_SCALE,
+        1.0,
+    )
+
     return (
         config.BPM_WEIGHT * bpm_cost
-        + config.ENERGY_WEIGHT * energy_cost
         + config.GENRE_WEIGHT * genre_cost
+        + config.KEY_WEIGHT * key_cost
+        + config.ENERGY_WEIGHT * energy_cost
     )
