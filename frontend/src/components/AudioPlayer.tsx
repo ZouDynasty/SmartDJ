@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Pause, Play, Shuffle, SkipBack, SkipForward, Volume2, X } from 'lucide-react'
+import { Disc3, Pause, Play, Shuffle, SkipBack, SkipForward, Volume2, X } from 'lucide-react'
 import { Artwork } from '@/components/Artwork'
 import { Visualizer } from '@/components/Visualizer'
 import { cn } from '@/lib/utils'
@@ -204,10 +204,7 @@ export function AudioPlayer() {
 
   if (!playingTrack) {
     return (
-      <footer className="flex shrink-0 items-center gap-3 bg-theme px-4 py-2.5">
-        <ShuffleButton />
-        <span className="text-xs text-ink-muted">Play a track to start.</span>
-      </footer>
+      <footer className="idle-player"><div className="player-thumbnail"><Disc3 size={21}/></div><div><span className="deck-label">Preview player</span><p>No track loaded</p></div><div className="idle-transport"><ShuffleButton/><SkipBack size={15}/><span><Play size={14} fill="currentColor"/></span><SkipForward size={15}/></div><div className="progress-idle"><small>0:00</small><i/><small>0:00</small></div><Volume2 size={16} aria-hidden="true"/></footer>
     )
   }
 

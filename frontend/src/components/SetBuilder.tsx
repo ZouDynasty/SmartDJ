@@ -333,7 +333,7 @@ export function SetBuilder({
     <section
       {...dropHandlers}
       className={cn(
-        'flex min-w-0 shrink-0 flex-col bg-theme',
+        'queue-panel studio-panel flex min-w-0 shrink-0 flex-col',
         isOver && 'shadow-[inset_0_0_0_2px_var(--color-accent)]',
       )}
       style={{ width }}
@@ -350,7 +350,8 @@ export function SetBuilder({
             <ChevronsRight className="size-3.5" />
           </button>
           <ListMusic className="size-4 shrink-0 text-accent-ink" />
-          <h2 className="sr-only">Queue</h2>
+          <h2>{isPlaylist ? 'Playlist' : 'Set'} queue</h2><span className="queue-count">{activeQueue.length}</span></div>
+          <div className="queue-mode">
           <div
             role="radiogroup"
             aria-label="Build a set or a playlist"
@@ -378,9 +379,6 @@ export function SetBuilder({
               </button>
             ))}
           </div>
-          <span className="ml-auto font-mono text-xs text-ink-muted">
-            {activeQueue.length}
-          </span>
         </div>
         <form
           className="flex items-center gap-1.5"
@@ -393,6 +391,7 @@ export function SetBuilder({
             type="text"
             value={setName}
             onChange={(event) => setSetName(event.target.value)}
+            aria-label={`${noun} name`}
             placeholder={`Name this ${noun}…`}
             className={cn(
               'min-w-0 flex-1 rounded-md border border-theme-line bg-theme px-2 py-1',
@@ -572,11 +571,7 @@ export function SetBuilder({
       </header>
 
       {points.length === 0 ? (
-        <div className="m-3 rounded-lg border border-dashed border-theme-line bg-theme-raised px-4 py-8 text-center">
-          <p className="text-sm text-ink-muted">
-            Drag tracks here to build a {noun}.
-          </p>
-        </div>
+        <div className="queue-empty"><div className="queue-empty-icon"><ListMusic size={24} strokeWidth={1.4}/></div><strong>Your queue is empty</strong><p>Drag tracks from the catalog<br/>to build your {noun}.</p></div>
       ) : (
         <DndContext
           sensors={sensors}

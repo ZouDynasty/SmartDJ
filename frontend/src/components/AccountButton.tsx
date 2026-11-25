@@ -190,7 +190,8 @@ export function AccountButton() {
   const status = useSetStore((state) => state.auth)
   const [error, setError] = useState<string | null>(takeAuthError)
 
-  if (status === null) return null
+  const client = supabase
+  if (!client || status === null) return null
 
   if (!status.configured) {
     return (
@@ -204,7 +205,7 @@ export function AccountButton() {
   // Supabase redirects to Google and back to this page. App picks up the new
   // session through onAuthStateChange, including after sign-out.
   const handleSignIn = () => {
-    supabase.auth
+    client.auth
       .signInWithOAuth({
         provider: 'google',
         options: {
@@ -218,7 +219,7 @@ export function AccountButton() {
   }
 
   const handleLogout = () => {
-    supabase.auth.signOut().then(({ error: signOutError }) => {
+    client.auth.signOut().then(({ error: signOutError }) => {
       if (signOutError) setError(signOutError.message)
     })
   }

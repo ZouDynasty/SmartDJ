@@ -1,11 +1,11 @@
 export const PANEL_LAYOUT_KEY = 'smartdj.panelLayout'
 
-export const DEFAULT_SIDEBAR_WIDTH = 320
+export const DEFAULT_SIDEBAR_WIDTH = 274
 export const MIN_SIDEBAR_WIDTH = 240
 export const MAX_SIDEBAR_WIDTH = 640
 export const MIN_MAIN_WIDTH = 480
 
-export const DEFAULT_GRAPH_HEIGHT = 320
+export const DEFAULT_GRAPH_HEIGHT = 225
 export const MIN_GRAPH_HEIGHT = 160
 export const MIN_LIBRARY_HEIGHT = 180
 

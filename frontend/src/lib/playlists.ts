@@ -1,9 +1,9 @@
-import { supabase } from '@/lib/supabase'
+import { requireSupabase } from '@/lib/supabase'
 import type { UserPlaylist } from '@/types'
 
 /** Row-level security limits every query to the signed-in user's rows. */
 export async function fetchPlaylists(): Promise<UserPlaylist[]> {
-  const { data, error } = await supabase
+  const { data, error } = await requireSupabase()
     .from('playlists')
     .select('id, name, track_ids, created_at, updated_at')
     .order('updated_at', { ascending: false })
@@ -16,10 +16,10 @@ export async function fetchPlaylists(): Promise<UserPlaylist[]> {
  * database, so `created_at` survives an overwrite and `updated_at` is bumped.
  */
 export async function upsertPlaylist(playlist: UserPlaylist): Promise<void> {
-  const { data } = await supabase.auth.getSession()
+  const { data } = await requireSupabase().auth.getSession()
   const userId = data.session?.user.id
   if (!userId) throw new Error('Sign in to save playlists')
-  const { error } = await supabase.from('playlists').upsert({
+  const { error } = await requireSupabase().from('playlists').upsert({
     id: playlist.id,
     user_id: userId,
     name: playlist.name,
@@ -36,6 +36,6 @@ export async function upsertPlaylist(playlist: UserPlaylist): Promise<void> {
 }
 
 export async function deletePlaylistRow(id: string): Promise<void> {
-  const { error } = await supabase.from('playlists').delete().eq('id', id)
+  const { error } = await requireSupabase().from('playlists').delete().eq('id', id)
   if (error) throw new Error(error.message)
 }
