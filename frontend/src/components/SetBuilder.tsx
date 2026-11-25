@@ -350,8 +350,7 @@ export function SetBuilder({
             <ChevronsRight className="size-3.5" />
           </button>
           <ListMusic className="size-4 shrink-0 text-accent-ink" />
-          <h2>{isPlaylist ? 'Playlist' : 'Set'} queue</h2><span className="queue-count">{activeQueue.length}</span></div>
-          <div className="queue-mode">
+          <h2 className="sr-only">{isPlaylist ? 'Playlist' : 'Set'} queue</h2>
           <div
             role="radiogroup"
             aria-label="Build a set or a playlist"
@@ -379,6 +378,7 @@ export function SetBuilder({
               </button>
             ))}
           </div>
+          <span className="ml-auto font-mono text-xs text-ink-muted">{activeQueue.length}</span>
         </div>
         <form
           className="flex items-center gap-1.5"

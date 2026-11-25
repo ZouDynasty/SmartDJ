@@ -1,81 +1,28 @@
-import {
-  AudioLines,
-  Clock3,
-  Disc3,
-  Layers3,
-  Moon,
-  Sun,
-  SlidersHorizontal,
-} from "lucide-react";
-import { AccountButton } from "./AccountButton";
-import { useTheme } from "@/lib/theme";
+import { Moon, Sun } from 'lucide-react'
+import { AccountButton } from './AccountButton'
+import { Logo } from './Logo'
+import { useTheme } from '@/lib/theme'
 
 interface Props {
-  name: string;
-  count: number;
-  duration: string;
-  library: string;
-  connected: boolean;
+  name: string
+  count: number
+  duration: string
+  library: string
+  connected: boolean
 }
-export function StudioHeader({
-  name,
-  count,
-  duration,
-  library,
-  connected,
-}: Props) {
-  const { theme, setTheme } = useTheme();
+
+export function StudioHeader({ name, count, duration, library, connected }: Props) {
+  const { theme, setTheme } = useTheme()
   return (
-    <>
-      <header className="studio-nav">
-        <div className="studio-brand">
-          <span className="brand-symbol">
-            <AudioLines aria-hidden="true" size={23} />
-          </span>
-          SmartDJ
-        </div>
-        <span className="nav-divider" />
-        <span className="workspace-label">
-          <SlidersHorizontal size={14} /> Workspace
-        </span>
-        <span className="nav-status" title={library}>
-          <i className={connected ? "connected" : ""} />
-          {library}
-        </span>
-        <button
-          className="theme-switch"
-          type="button"
-          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        >
-          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
+    <header className="studio-nav flex shrink-0 items-center gap-3 bg-theme px-4 py-2.5">
+      <Logo className="size-7" />
+      <h1 className="shrink-0 text-sm font-semibold tracking-tight">SmartDJ<span className="ml-2 font-normal text-ink-muted">Set Builder</span></h1>
+      <span className="session-chip truncate rounded-full border border-theme-line bg-theme-raised px-2.5 py-0.5 font-mono text-xs" title={name}>{name} · {count} in set · {duration}</span>
+      <span className="library-status truncate text-xs text-ink-muted" data-connected={connected}>{library}</span>
+      <div className="ml-auto flex shrink-0 items-center gap-3">
+        <button type="button" className="rounded-md p-1 text-ink-muted hover:bg-hover hover:text-ink" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
         <AccountButton />
-      </header>
-      <section className="studio-banner" aria-labelledby="studio-title">
-        <div className="studio-kicker">
-          <span /> MIXING WORKSPACE
-        </div>
-        <h1 id="studio-title">
-          Set Builder<span>.</span>
-        </h1>
-        <div className="session-meta">
-          <span>
-            <Disc3 />
-            {name}
-          </span>
-          <b>/</b>
-          <span>
-            <Layers3 />
-            {count} tracks
-          </span>
-          <b>/</b>
-          <span>
-            <Clock3 />
-            {duration}
-          </span>
-        </div>
-      </section>
-    </>
-  );
+      </div>
+    </header>
+  )
 }
