@@ -1,35 +1,10 @@
 :root {
   --font-sans: 'Inter Tight Variable', system-ui, sans-serif;
-  --desk: #e9edf0;
-  --face: #fbfcfd;
-  --type: #18252c;
-  --signal: #167469;
-  --quiet: color-mix(in srgb, var(--type) 72%, var(--face));
-  --edge: color-mix(in srgb, var(--type) 19%, var(--face));
-  --color-canvas: var(--desk);
-  --color-panel: var(--face);
-  --color-theme: var(--face);
-  --color-float: var(--face);
-  --color-sticky: var(--face);
-  --color-theme-raised: color-mix(in srgb, var(--desk) 65%, var(--face));
-  --color-raised: var(--color-theme-raised);
-  --color-line: var(--edge);
-  --color-seam: var(--edge);
-  --color-theme-line: var(--edge);
-  --color-ink: var(--type);
-  --color-ink-muted: var(--quiet);
-  --color-ink-faint: color-mix(in srgb, var(--quiet) 91%, var(--face));
-  --color-accent: var(--signal);
-  --color-accent-ink: var(--signal);
-  --color-accent-hover: color-mix(in srgb, var(--signal) 88%, var(--type));
-  --color-on-accent: var(--face);
-  --color-hover: color-mix(in srgb, var(--signal) 10%, var(--face));
-}
-:root.dark {
-  --desk: #101619;
-  --face: #1c2428;
-  --type: #e8eeed;
-  --signal: #8ddbc9;
+  --desk: var(--color-lagoon-50);
+  --face: var(--color-sticky);
+  --signal: var(--color-accent-ink);
+  --quiet: var(--color-ink-muted);
+  --edge: color-mix(in srgb, var(--color-bpm-field) 30%, var(--face));
 }
 body { background: var(--desk); }
 .studio-shell { height: 100svh; min-height: 0; display: flex; flex-direction: column; gap: 1px; overflow: hidden; background: var(--edge); }
