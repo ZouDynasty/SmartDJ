@@ -9,7 +9,10 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    allowedHosts: ['sb-5iuy9p194vfp.vercel.run'],
+    allowedHosts: [
+      'sb-5iuy9p194vfp.vercel.run',
+      'sb-6oj1vxiky7e9.vercel.run',
+    ],
   },
   resolve: {
     alias: {
