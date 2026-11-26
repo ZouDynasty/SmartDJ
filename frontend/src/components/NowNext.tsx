@@ -82,7 +82,7 @@ function SlotCard({
       <div
         {...dropHandlers}
         className={cn(
-          'flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-dashed px-3 py-2.5 transition-colors',
+          'flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-dashed px-3 py-5 transition-colors',
           isOver
             ? 'border-accent bg-theme-raised'
             : 'border-line bg-panel',
@@ -100,7 +100,7 @@ function SlotCard({
       data-deck
       onClick={onSelect}
       className={cn(
-        'group relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition-colors',
+        'group relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg border px-3 py-4 transition-colors',
         isOver || isSelected
           ? 'border-accent bg-theme-raised'
           : 'border-theme-line bg-theme hover:bg-theme-raised',
@@ -119,7 +119,7 @@ function SlotCard({
         <Artwork
           trackId={slot.track.track_id}
           title={slot.title}
-          className="size-11"
+          className="size-14"
         />
         <span
           className={cn(
