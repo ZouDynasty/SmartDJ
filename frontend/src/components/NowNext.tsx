@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Music4, Pause, Play, X } from 'lucide-react'
+import { ArrowRight, Disc3, Pause, Play, X } from 'lucide-react'
 import { Artwork } from '@/components/Artwork'
 import { MixPathButton } from '@/components/MixPathButton'
 import { useTrackDrop } from '@/lib/dragTrack'
@@ -55,6 +55,7 @@ function keyBadgeClass(keyLabel: string | null): string {
 }
 
 interface SlotCardProps {
+  label: 'A' | 'B'
   slot: Slot | null
   isPlaying: boolean
   isSelected: boolean
@@ -65,6 +66,7 @@ interface SlotCardProps {
 }
 
 function SlotCard({
+  label,
   slot,
   isPlaying,
   isSelected,
@@ -86,8 +88,8 @@ function SlotCard({
             : 'border-line bg-panel',
         )}
       >
-        <Music4 className="size-4 shrink-0 text-ink-muted" />
-        <p className="truncate text-sm text-ink-muted">Drop a track here</p>
+        <span className="deck-disc"><Disc3 size={30} strokeWidth={1.1}/></span>
+        <div className="min-w-0"><strong className="deck-label">Deck {label}</strong><p className="text-xs text-ink-muted">Drop a track here</p></div>
       </div>
     )
   }
@@ -346,6 +348,7 @@ export function NowNext() {
       className="flex shrink-0 items-stretch gap-2 bg-canvas px-4 py-2.5"
     >
       <SlotCard
+        label="A"
         slot={left}
         isPlaying={isSlotPlaying(left)}
         isSelected={selected === 0}
@@ -356,6 +359,7 @@ export function NowNext() {
       />
       <TransitionSummary left={left} right={right} />
       <SlotCard
+        label="B"
         slot={right}
         isPlaying={isSlotPlaying(right)}
         isSelected={selected === 1}

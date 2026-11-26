@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { requireSupabase } from '@/lib/supabase'
 import type {
   AuthStatus,
   CompatibilityRanking,
@@ -15,7 +15,7 @@ export const API_BASE = 'http://localhost:8000/api'
 
 /** Sends the Supabase access token, which the API verifies on every request. */
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const { data } = await supabase.auth.getSession()
+  const { data } = await requireSupabase().auth.getSession()
   const accessToken = data.session?.access_token
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,

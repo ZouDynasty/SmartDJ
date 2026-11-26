@@ -515,7 +515,7 @@ export function TrackLibrary() {
   )
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-canvas">
+    <section className="catalog-panel studio-panel flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 border-b border-line bg-panel">
         <div className="flex min-w-0 flex-1 items-center gap-2 px-4 py-2.5">
         <div className="flex shrink-0 items-center gap-2 text-ink">
@@ -525,7 +525,7 @@ export function TrackLibrary() {
           </h2>
         </div>
         <span className="shrink-0 font-mono text-xs text-ink-muted">
-          {visibleTracks.length} / {catalog.length}
+          {visibleTracks.length === catalog.length ? `${catalog.length} tracks` : `${visibleTracks.length} / ${catalog.length}`}
         </span>
 
         <div className="relative min-w-0 flex-1">
@@ -534,7 +534,8 @@ export function TrackLibrary() {
             type="search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search title or artist…"
+            aria-label="Search catalog by title or artist"
+            placeholder="Search tracks or artists…"
             className={cn(
               'w-full rounded-md border border-line bg-raised py-1.5 pl-8 pr-3',
               'text-xs text-ink placeholder:text-ink-faint',
@@ -669,9 +670,7 @@ export function TrackLibrary() {
           className="min-h-0 flex-1 overflow-auto bg-[var(--color-sticky)] [scrollbar-gutter:stable]"
         >
           {catalogStatus === 'idle' && (
-            <p className="px-3 py-6 text-sm text-ink-muted">
-              Sign in to load your library.
-            </p>
+            <div className="catalog-empty"><Disc3 size={21}/><div><strong>No library connected</strong><p>{import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Sign in to load your track library.' : 'Library sign-in is not configured in this workspace.'}</p></div></div>
           )}
           {catalogStatus === 'loading' && (
             <p className="px-3 py-6 text-sm text-ink-muted">Loading catalog…</p>

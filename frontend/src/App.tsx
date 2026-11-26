@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { TriangleAlert } from 'lucide-react'
-import { Logo } from '@/components/Logo'
-import { AccountButton } from '@/components/AccountButton'
+import { StudioHeader } from '@/components/StudioHeader'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { LibrarySetup } from '@/components/LibrarySetup'
 import { MixingPreferences } from '@/components/MixingPreferences'
@@ -29,7 +27,6 @@ function App() {
   const loadedSetId = useSetStore((state) => state.loadedSetId)
   const catalog = useSetStore((state) => state.catalog)
   const catalogStatus = useSetStore((state) => state.catalogStatus)
-  const catalogError = useSetStore((state) => state.catalogError)
   const setCatalog = useSetStore((state) => state.setCatalog)
   const setCatalogStatus = useSetStore((state) => state.setCatalogStatus)
   const setCatalogError = useSetStore((state) => state.setCatalogError)
@@ -85,6 +82,7 @@ function App() {
   // re-fetch /auth/me and swap the media token under a playing track.
   // Supabase calls must not be awaited inside this callback.
   useEffect(() => {
+    if (!supabase) return
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setSessionUserId(session?.user.id ?? null)
     })
@@ -191,44 +189,11 @@ function App() {
   }, [])
 
   return (
-    <div className="flex h-svh min-h-0 flex-col gap-px overflow-hidden bg-seam font-sans text-ink">
-      <header className="flex shrink-0 items-center gap-3 bg-theme px-4 py-2.5">
-        <Logo className="size-7" />
-        <h1 className="text-sm font-semibold tracking-tight text-ink">
-          SmartDJ
-          <span className="ml-2 font-normal text-ink-muted">Set Builder</span>
-        </h1>
-        <span className="rounded-full border border-theme-line bg-theme-raised px-2.5 py-0.5 font-mono text-xs text-ink-muted">
-          {savedSets.find((entry) => entry.id === loadedSetId)?.name ??
-            'Untitled set'}
-          {' · '}
-          {activeQueue.length} in set ·{' '}
-          {formatDuration(totalSetDuration(activeQueue))}
-        </span>
-        <span className="font-mono text-xs text-ink-muted">
-          {catalogStatus === 'ready'
-            ? `${catalog.length} tracks in library`
-            : catalogStatus === 'loading'
-              ? 'connecting to library…'
-              : signedInUserId === null
-                ? 'sign in to load your library'
-                : ''}
-        </span>
-        <div className="ml-auto flex items-center gap-3">
-          {catalogStatus === 'error' && (
-            <span className="flex items-center gap-1.5 text-xs text-danger">
-              <TriangleAlert className="size-3.5" />
-              {catalogError} — start the API with{' '}
-              <code className="text-danger">
-                python -m uvicorn api.main:app --port 8000
-              </code>
-            </span>
-          )}
-          <AccountButton />
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
+    <div className="studio-shell font-sans text-ink">
+      <StudioHeader name={savedSets.find((entry) => entry.id === loadedSetId)?.name ?? 'Untitled set'}
+        count={activeQueue.length} duration={formatDuration(totalSetDuration(activeQueue))}
+        connected={catalogStatus === 'ready'} library={catalogStatus === 'ready' ? `${catalog.length} library tracks` : catalogStatus === 'loading' ? 'Connecting…' : 'Library offline'} />
+      <main className="studio-workspace">
         <div
           ref={columnRef}
           className="flex min-h-0 min-w-0 flex-1 flex-col"
@@ -302,7 +267,7 @@ function App() {
           collapsed={queueCollapsed}
           onToggle={() => setQueueCollapsed((value) => !value)}
         />
-      </div>
+      </main>
 
       <AudioPlayer />
       <LibrarySetup />

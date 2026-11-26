@@ -62,9 +62,9 @@ function useGraphPalette() {
 
 const VIEW_OPTIONS: { value: MetricView; label: string }[] = [
   { value: 'all', label: 'All' },
-  { value: 'bpm', label: 'BPM Only' },
-  { value: 'energy', label: 'Energy Only' },
-  { value: 'key', label: 'Key Only' },
+  { value: 'bpm', label: 'BPM' },
+  { value: 'energy', label: 'Energy' },
+  { value: 'key', label: 'Key' },
 ]
 
 /** Camelot axis renders every one of the 24 harmonic ticks. */
@@ -291,7 +291,7 @@ export function SetGraph({
 
   return (
     <section
-      className="flex shrink-0 flex-col bg-canvas"
+      className="trajectory studio-panel flex shrink-0 flex-col"
       style={collapsed ? undefined : { height }}
     >
       <header
@@ -386,7 +386,7 @@ export function SetGraph({
 
       {!collapsed && (
       <div className="relative min-h-0 flex-1 overflow-x-auto overflow-y-hidden px-2 pb-2">
-        <div style={{ width: `${100 * zoom}%`, height: '100%', minHeight: 220 }}>
+        <div style={{ width: `${100 * zoom}%`, height: '100%' }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={chartData}
@@ -499,9 +499,7 @@ export function SetGraph({
         </div>
 
         {points.length === 0 && (
-          <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-ink-muted">
-            Add tracks to plot the set.
-          </p>
+          <div className="chart-empty pointer-events-none absolute inset-0 flex items-center justify-center"><div><Activity size={20}/><strong>Your set trajectory</strong><span>Add tracks to visualize tempo, energy, and key.</span></div></div>
         )}
       </div>
       )}

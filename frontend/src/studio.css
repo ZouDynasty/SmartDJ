@@ -1,0 +1,41 @@
+:root {
+  --font-sans: 'Inter Tight Variable', system-ui, sans-serif;
+  --desk: var(--color-lagoon-50);
+  --face: var(--color-sticky);
+  --signal: var(--color-accent-ink);
+  --quiet: var(--color-ink-muted);
+  --edge: color-mix(in srgb, var(--color-bpm-field) 30%, var(--face));
+}
+body { background: var(--desk); }
+.studio-shell { height: 100svh; min-height: 0; display: flex; flex-direction: column; gap: 1px; overflow: hidden; background: var(--edge); }
+.studio-workspace { min-height: 0; flex: 1; display: flex; }
+.studio-nav { position: relative; z-index: 20; }
+.studio-nav h1 { font-size: 1.1rem; }
+.session-chip { color: var(--quiet); font-variant-numeric: tabular-nums; }
+.library-status::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; vertical-align: middle; border-radius: 50%; background: var(--quiet); }
+.library-status[data-connected='true']::before { background: var(--signal); }
+.studio-panel { min-width: 0; background: var(--desk); }
+.queue-panel { background: var(--face); }
+.studio-panel header h2 { letter-spacing: .085em; }
+.studio-shell button:not(:disabled) { cursor: pointer; }
+.studio-shell :is(button,input,select):focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.studio-workspace button.cursor-row-resize { cursor: row-resize; }
+.studio-workspace button.cursor-col-resize { cursor: col-resize; }
+.studio-workspace :is(.cursor-row-resize,.cursor-col-resize):hover { background: var(--signal); }
+.chart-empty > div { display: grid; justify-items: center; gap: 3px; text-align: center; background: var(--desk); padding: 8px 12px; border-radius: 8px; }
+.chart-empty svg, .deck-label, .queue-empty-icon { color: var(--signal); }
+.chart-empty strong, .queue-empty strong, .catalog-empty strong { font-size: 1rem; font-weight: 600; }
+.chart-empty span, .queue-empty p, .catalog-empty p { color: var(--quiet); font-size: .9rem; }
+.trajectory .recharts-cartesian-grid line { stroke: var(--edge); }
+.trajectory .recharts-cartesian-axis-tick text { fill: var(--quiet); }
+.deck-disc { color: var(--quiet); }
+.deck-label { font: 500 .75rem/1.4 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.queue-empty { margin: .75rem; border: 1px dashed var(--edge); border-radius: .65rem; padding: 1.5rem 1rem; text-align: center; background: var(--color-theme-raised); }
+.queue-empty-icon { display: flex; justify-content: center; margin-bottom: .4rem; }
+.catalog-empty { display: flex; align-items: center; gap: .75rem; padding: 1.25rem .75rem; }
+.catalog-empty > svg { color: var(--quiet); }
+@media (max-width: 600px) {
+  .library-status { display: none; }
+  .studio-shell { overflow-x: auto; }
+  .studio-workspace { min-width: 760px; }
+}

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { requireSupabase } from '@/lib/supabase'
 import type { SavedSet } from '@/types'
 
 /** Where sets lived before Supabase. Imported once on sign-in, then removed. */
@@ -9,7 +9,7 @@ const UUID_PATTERN =
 
 /** Row-level security limits every query to the signed-in user's rows. */
 export async function fetchSavedSets(): Promise<SavedSet[]> {
-  const { data, error } = await supabase
+  const { data, error } = await requireSupabase()
     .from('saved_sets')
     .select('id, name, track_ids, saved_at')
     .order('saved_at', { ascending: false })
@@ -19,17 +19,17 @@ export async function fetchSavedSets(): Promise<SavedSet[]> {
 
 /** Insert, or overwrite the row with the same `id`. */
 export async function upsertSavedSets(sets: SavedSet[]): Promise<void> {
-  const { data } = await supabase.auth.getSession()
+  const { data } = await requireSupabase().auth.getSession()
   const userId = data.session?.user.id
   if (!userId) throw new Error('Sign in to save sets')
-  const { error } = await supabase
+  const { error } = await requireSupabase()
     .from('saved_sets')
     .upsert(sets.map((set) => ({ ...set, user_id: userId })))
   if (error) throw new Error(error.message)
 }
 
 export async function deleteSavedSetRow(id: string): Promise<void> {
-  const { error } = await supabase.from('saved_sets').delete().eq('id', id)
+  const { error } = await requireSupabase().from('saved_sets').delete().eq('id', id)
   if (error) throw new Error(error.message)
 }
 
