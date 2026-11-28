@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { setTrackRating } from '@/lib/api'
 import { deletePlaylistRow, upsertPlaylist } from '@/lib/playlists'
+import { upsertRating } from '@/lib/ratings'
 import { deleteSavedSetRow, upsertSavedSets } from '@/lib/savedSets'
 import type {
   AuthStatus,
@@ -10,8 +10,18 @@ import type {
   SortDirection,
   SortField,
   Track,
+  TrackRating,
   UserPlaylist,
 } from '@/types'
+
+/** Rekordbox keeps ratings as 0–255, 51 per star. */
+const RATING_PER_STAR = 51
+
+/** The track with the user's saved rating, if they have one, in place of the imported one. */
+function withSavedRating(track: Track, ratings: Record<number, number>): Track {
+  const stars = ratings[track.track_id]
+  return stars === undefined ? track : { ...track, rating: stars * RATING_PER_STAR }
+}
 
 export const MIN_ZOOM = 1
 export const MAX_ZOOM = 8
@@ -67,6 +77,32 @@ function playbackPool(state: {
   return pool
 }
 
+/** Applies `update` to every copy of a track the store holds, so a change shows everywhere at once. */
+function mapTracks(
+  state: Pick<
+    SetStore,
+    'catalog' | 'decks' | 'activeQueue' | 'selectedTrack' | 'playingTrack'
+  >,
+  update: (track: Track) => Track,
+): Pick<
+  SetStore,
+  'catalog' | 'decks' | 'activeQueue' | 'selectedTrack' | 'playingTrack'
+> {
+  return {
+    catalog: state.catalog.map(update),
+    decks: state.decks.map((track) => (track ? update(track) : track)) as [
+      Track | null,
+      Track | null,
+    ],
+    activeQueue: state.activeQueue.map((item) => {
+      const track = update(item.track)
+      return track === item.track ? item : { ...item, track }
+    }),
+    selectedTrack: state.selectedTrack ? update(state.selectedTrack) : null,
+    playingTrack: state.playingTrack ? update(state.playingTrack) : null,
+  }
+}
+
 function createSetItem(track: Track): SetItem {
   return {
     instance_id: createInstanceId(track.track_id),
@@ -116,6 +152,11 @@ interface SetStore {
   catalogError: string | null
   /** Bumped when an import writes the library, so the catalog is fetched again. */
   libraryVersion: number
+  /**
+   * Mirror of the user's Supabase `track_ratings` rows, as stars by track ID.
+   * A track listed here shows these stars instead of its imported rating.
+   */
+  ratings: Record<number, number>
   /** Library setup dialog, opened on first sign-in or from the account menu. */
   setupOpen: boolean
   /** Mixing preferences panel, opened from the settings menu. */
@@ -174,7 +215,9 @@ interface SetStore {
   setCatalogStatus: (status: SetStore['catalogStatus']) => void
   setCatalogError: (message: string | null) => void
   bumpLibraryVersion: () => void
-  /** Rate a track 0–5 stars; shown at once, saved in the background. */
+  /** Replace the saved ratings with what Supabase holds and show them on every loaded track. */
+  setRatings: (rows: TrackRating[]) => void
+  /** Rate a track 0–5 stars; shown at once, saved to Supabase in the background. */
   rateTrack: (trackId: number, stars: number) => void
   setSetupOpen: (open: boolean) => void
   setMixingOpen: (open: boolean) => void
@@ -256,6 +299,7 @@ export const useSetStore = create<SetStore>()((set, get) => ({
   catalogStatus: 'idle',
   catalogError: null,
   libraryVersion: 0,
+  ratings: {},
   setupOpen: false,
   mixingOpen: false,
   mixingVersion: 0,
@@ -292,6 +336,7 @@ export const useSetStore = create<SetStore>()((set, get) => ({
       catalog: [],
       catalogStatus: 'idle',
       catalogError: null,
+      ratings: {},
       decks: [null, null],
       activeQueue: [],
       savedSets: [],
@@ -311,8 +356,10 @@ export const useSetStore = create<SetStore>()((set, get) => ({
       playHistory: [],
     }),
 
-  setCatalog: (tracks) =>
+  setCatalog: (incoming) =>
     set((state) => {
+      // The import knows nothing of the user's own ratings; lay them on top.
+      const tracks = incoming.map((track) => withSavedRating(track, state.ratings))
       const saved = state.loadedSetId
         ? state.savedSets.find((entry) => entry.id === state.loadedSetId)
         : null
@@ -327,24 +374,38 @@ export const useSetStore = create<SetStore>()((set, get) => ({
   setCatalogError: (message) => set({ catalogError: message }),
   bumpLibraryVersion: () =>
     set((state) => ({ libraryVersion: state.libraryVersion + 1 })),
+  setRatings: (rows) =>
+    set((state) => {
+      const ratings: Record<number, number> = {}
+      for (const row of rows) ratings[row.track_id] = row.stars
+      return {
+        ratings,
+        ...mapTracks(state, (track) => withSavedRating(track, ratings)),
+      }
+    }),
+
   rateTrack: (trackId, stars) => {
-    // Rekordbox keeps ratings as 0–255, 51 per star.
-    const apply = (rating: number) => {
-      const update = (track: Track) =>
-        track.track_id === trackId ? { ...track, rating } : track
-      set((state) => ({
-        catalog: state.catalog.map(update),
-        decks: state.decks.map((track) =>
-          track ? update(track) : track,
-        ) as [Track | null, Track | null],
-        selectedTrack: state.selectedTrack ? update(state.selectedTrack) : null,
-      }))
-    }
-    const previous = get().catalog.find((track) => track.track_id === trackId)
-    const previousRating = previous?.rating ?? 0
-    apply(stars * 51)
-    setTrackRating(trackId, stars).catch((cause: unknown) => {
-      apply(previousRating)
+    const setRating = (rating: number) =>
+      set((state) =>
+        mapTracks(state, (track) =>
+          track.track_id === trackId ? { ...track, rating } : track,
+        ),
+      )
+    const { ratings, catalog } = get()
+    const previousRating = catalog.find((track) => track.track_id === trackId)?.rating ?? 0
+    const previousStars = ratings[trackId]
+
+    setRating(stars * RATING_PER_STAR)
+    set({ ratings: { ...ratings, [trackId]: stars } })
+    upsertRating(trackId, stars).catch((cause: unknown) => {
+      // Put back what the track showed, and forget the override if it was new.
+      setRating(previousRating)
+      set((state) => {
+        const restored = { ...state.ratings }
+        if (previousStars === undefined) delete restored[trackId]
+        else restored[trackId] = previousStars
+        return { ratings: restored }
+      })
       console.error('Could not save rating', cause)
     })
   },

@@ -16,6 +16,7 @@ import {
   persistPanelLayout,
 } from '@/lib/panelLayout'
 import { fetchPlaylists } from '@/lib/playlists'
+import { fetchRatings } from '@/lib/ratings'
 import { fetchSavedSets, importLegacySavedSets } from '@/lib/savedSets'
 import { formatDuration, totalSetDuration } from '@/lib/setMath'
 import { supabase } from '@/lib/supabase'
@@ -36,6 +37,7 @@ function App() {
   const setSavedSetsError = useSetStore((state) => state.setSavedSetsError)
   const setPlaylists = useSetStore((state) => state.setPlaylists)
   const setPlaylistsError = useSetStore((state) => state.setPlaylistsError)
+  const setRatings = useSetStore((state) => state.setRatings)
   const signedInUserId = useSetStore((state) => state.auth?.user?.id ?? null)
   const libraryVersion = useSetStore((state) => state.libraryVersion)
   /** Undefined until Supabase reports the stored session (or its absence). */
@@ -139,6 +141,23 @@ function App() {
       cancelled = true
     }
   }, [signedInUserId, setPlaylists, setPlaylistsError])
+
+  // Saved ratings win over the Rekordbox ones. If they cannot be read, the
+  // library still shows the imported stars.
+  useEffect(() => {
+    if (signedInUserId === null) return
+    let cancelled = false
+    fetchRatings()
+      .then((rows) => {
+        if (!cancelled) setRatings(rows)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) console.error('Could not load ratings', error)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [signedInUserId, setRatings])
 
   useEffect(() => {
     if (signedInUserId === null) return

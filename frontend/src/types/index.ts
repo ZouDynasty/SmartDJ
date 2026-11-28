@@ -93,6 +93,12 @@ export interface UserPlaylist {
   updated_at: string
 }
 
+/** Row of the Supabase `track_ratings` table: one user's 0–5 stars for one track. */
+export interface TrackRating {
+  track_id: number
+  stars: number
+}
+
 export interface Recommendation {
   track: Track
   score: number | null
